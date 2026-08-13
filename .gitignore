@@ -1,5 +1,8 @@
-# Local Supabase credentials — never commit
-config.js
+# NOTE: config.js IS committed on purpose.
+# It contains only the PUBLIC Supabase anon/publishable key, which is designed
+# to ship to the browser and is protected by Row Level Security. Committing it
+# lets the app deploy to Vercel/Netlify without a build step and avoids the
+# "/config.js 404" error. Never put the service_role key here.
 
 # OS / editor noise
 .DS_Store

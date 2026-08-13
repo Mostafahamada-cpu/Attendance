@@ -13,6 +13,24 @@
 --  >>> EDIT the emails below to the ones you actually created. <<<
 -- ============================================================================
 
+-- 0. BACKFILL existing auth users -------------------------------------------
+--  The ta_handle_new_user() trigger only fires for NEW sign-ups. Because this
+--  app SHARES the RingRoad Supabase project, users who already existed need a
+--  ta_profiles row + default balances created once. Idempotent: inserts only
+--  what's missing, never touches RingRoad's own `profiles` table.
+insert into public.ta_profiles (id, email, full_name, role)
+select u.id, u.email,
+       coalesce(u.raw_user_meta_data->>'full_name', split_part(u.email, '@', 1)),
+       'employee'
+from auth.users u
+on conflict (id) do nothing;
+
+insert into public.ta_leave_balances (employee_id, leave_type, total_days)
+select p.id, t.lt, t.days
+from public.ta_profiles p
+cross join (values ('casual'::ta_leave_type, 12), ('medical'::ta_leave_type, 8), ('planned'::ta_leave_type, 5)) as t(lt, days)
+on conflict (employee_id, leave_type) do nothing;
+
 -- 1. Roles -------------------------------------------------------------------
 update public.ta_profiles set role = 'admin',
        department = 'Management', position = 'Manager'
