@@ -1,7 +1,7 @@
-import { Profiles, Attendance, Leaves } from '../../lib/data.js?v=20260813c';
-import { el, icon, avatar, pill, ring, emptyState } from '../../lib/ui.js?v=20260813c';
-import { todayYMD, fmtTime, minToDur } from '../../lib/time.js?v=20260813c';
-import { POLL_MS } from '../../../config.js?v=20260813c';
+import { Profiles, Attendance, Leaves } from '../../lib/data.js?v=20260813d';
+import { el, icon, avatar, pill, ring, emptyState } from '../../lib/ui.js?v=20260813d';
+import { todayYMD, fmtTime, minToDur } from '../../lib/time.js?v=20260813d';
+import { POLL_MS } from '../../../config.js?v=20260813d';
 
 export default async function adminDashboard({ navigate, refresh }) {
   const screen = el('div.fade-up');

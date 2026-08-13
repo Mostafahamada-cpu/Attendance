@@ -279,6 +279,19 @@ create policy ta_notif_ins on public.ta_notifications for insert to authenticate
   with check (public.ta_is_admin() or employee_id = auth.uid());
 
 -- ============================================================================
+--  GRANTS  (REQUIRED — RLS gates rows, but the role still needs table access)
+--  Without these, the `authenticated` role gets Postgres 42501 "permission
+--  denied for table" and PostgREST returns 401. RLS stays ON and is the real
+--  gate; `anon` is intentionally NOT granted (these tables need a session).
+-- ============================================================================
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on
+  public.ta_profiles, public.ta_attendance, public.ta_leave_balances,
+  public.ta_leave_requests, public.ta_weekly_off_days, public.ta_notifications
+to authenticated;
+grant execute on function public.ta_review_leave(uuid, text) to authenticated;
+
+-- ============================================================================
 --  REALTIME  (optional — lets the admin "Who's In" & employee notifications
 --  update live if you switch the client to supabase-js websockets)
 -- ============================================================================

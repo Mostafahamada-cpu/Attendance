@@ -1,7 +1,7 @@
-import { Attendance, Balances } from '../../lib/data.js?v=20260813c';
-import { el, icon, avatar, ring, iconEl } from '../../lib/ui.js?v=20260813c';
-import { toastOk, toastErr, confirmDialog } from '../../lib/toast.js?v=20260813c';
-import { fmtTime, fmtHM, fmtLongDate, minToHM, minToDur } from '../../lib/time.js?v=20260813c';
+import { Attendance, Balances } from '../../lib/data.js?v=20260813d';
+import { el, icon, avatar, ring, iconEl } from '../../lib/ui.js?v=20260813d';
+import { toastOk, toastErr, confirmDialog } from '../../lib/toast.js?v=20260813d';
+import { fmtTime, fmtHM, fmtLongDate, minToHM, minToDur } from '../../lib/time.js?v=20260813d';
 
 export default async function empHome({ profile, navigate, refresh }) {
   const [today, balances] = await Promise.all([Attendance.today(), Balances.mine()]);

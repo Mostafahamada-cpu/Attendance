@@ -1,24 +1,24 @@
 // RingRoad Attendance — entry point: session, routing, app shells.
-import { auth, getSession, setLogoutHandler } from './lib/supabase.js?v=20260813c';
-import { Profiles, Notifs } from './lib/data.js?v=20260813c';
-import { el, icon, avatar, mount } from './lib/ui.js?v=20260813c';
-import { toastErr } from './lib/toast.js?v=20260813c';
-import { SUPABASE_URL } from '../config.js?v=20260813c';
+import { auth, getSession, setLogoutHandler } from './lib/supabase.js?v=20260813d';
+import { Profiles, Notifs } from './lib/data.js?v=20260813d';
+import { el, icon, avatar, mount } from './lib/ui.js?v=20260813d';
+import { toastErr } from './lib/toast.js?v=20260813d';
+import { SUPABASE_URL } from '../config.js?v=20260813d';
 
-import loginPage from './pages/login.js?v=20260813c';
-import empHome from './pages/employee/home.js?v=20260813c';
-import empApply from './pages/employee/apply-leave.js?v=20260813c';
-import empLeaves from './pages/employee/my-leaves.js?v=20260813c';
-import empCalendar from './pages/employee/calendar.js?v=20260813c';
-import empNotifs from './pages/employee/notifications.js?v=20260813c';
-import empChat from './pages/employee/chat.js?v=20260813c';
-import empMore from './pages/employee/more.js?v=20260813c';
-import admDashboard from './pages/admin/dashboard.js?v=20260813c';
-import admLeaves from './pages/admin/leaves.js?v=20260813c';
-import admEmployees from './pages/admin/employees.js?v=20260813c';
-import admBalances from './pages/admin/balances.js?v=20260813c';
-import admOffdays from './pages/admin/offdays.js?v=20260813c';
-import admAnalytics from './pages/admin/analytics.js?v=20260813c';
+import loginPage from './pages/login.js?v=20260813d';
+import empHome from './pages/employee/home.js?v=20260813d';
+import empApply from './pages/employee/apply-leave.js?v=20260813d';
+import empLeaves from './pages/employee/my-leaves.js?v=20260813d';
+import empCalendar from './pages/employee/calendar.js?v=20260813d';
+import empNotifs from './pages/employee/notifications.js?v=20260813d';
+import empChat from './pages/employee/chat.js?v=20260813d';
+import empMore from './pages/employee/more.js?v=20260813d';
+import admDashboard from './pages/admin/dashboard.js?v=20260813d';
+import admLeaves from './pages/admin/leaves.js?v=20260813d';
+import admEmployees from './pages/admin/employees.js?v=20260813d';
+import admBalances from './pages/admin/balances.js?v=20260813d';
+import admOffdays from './pages/admin/offdays.js?v=20260813d';
+import admAnalytics from './pages/admin/analytics.js?v=20260813d';
 
 const appRoot = document.getElementById('app');
 export const state = { profile: null, unread: 0 };

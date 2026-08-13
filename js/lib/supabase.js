@@ -1,6 +1,6 @@
 // Minimal Supabase client over fetch(): GoTrue auth + PostgREST + RPC.
 // Isolated session key so it never collides with the main platform app.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SESSION_KEY } from '../../config.js?v=20260813c';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SESSION_KEY } from '../../config.js?v=20260813d';
 
 const AUTH = SUPABASE_URL + '/auth/v1';
 const REST = SUPABASE_URL + '/rest/v1';
@@ -80,17 +80,29 @@ async function refresh() {
 
 async function request(url, opts = {}, retried = false) {
   const res = await fetch(url, { ...opts, headers: { ...headers(), ...(opts.headers || {}) } });
-  if (res.status === 401 && !retried && session?.refresh_token) {
+  if (res.ok) {
+    if (res.status === 204) return null;
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  }
+  // Error path — read the body once and classify it.
+  const err = await res.json().catch(() => ({}));
+  const msg = err.message || err.msg || '';
+  // Only an EXPIRED / INVALID JWT should trigger a token refresh (then logout).
+  // PostgREST signals that with 401 + a JWT-related code/message.
+  const jwtExpired = res.status === 401 &&
+    (err.code === 'PGRST301' || err.code === 'PGRST302' || /jwt|token|expired/i.test(msg));
+  if (jwtExpired && !retried && session?.refresh_token) {
     if (await refresh()) return request(url, opts, true);
-    onLogout(); throw new Error('Session expired');
+    onLogout();
+    throw new Error('Your session expired — please sign in again.');
   }
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || err.error || err.hint || ('HTTP ' + res.status));
+  // 42501 = Postgres "permission denied for table": a GRANTS problem, NOT an auth
+  // problem. Surface it clearly instead of forcing a logout/refresh loop.
+  if (err.code === '42501') {
+    throw new Error('Permission denied by the database (missing grants for the "authenticated" role — run db/fix-grants.sql).');
   }
-  if (res.status === 204) return null;
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
+  throw new Error(msg || err.error || err.hint || ('HTTP ' + res.status));
 }
 
 // --- PostgREST ---
