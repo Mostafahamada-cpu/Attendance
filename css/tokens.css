@@ -1,0 +1,55 @@
+/* Design tokens — RingRoad Attendance. Teal-green brand, soft pastel, rounded. */
+:root {
+  /* Brand */
+  --teal:        #24AAA5;
+  --teal-600:    #1E948F;
+  --teal-700:    #16716D;
+  --teal-050:    #E7F6F5;
+  --teal-100:    #D3EFED;
+
+  /* Clock gradients */
+  --grad-in:     linear-gradient(135deg, #2BC3BC 0%, #2F80ED 100%);
+  --grad-out:    linear-gradient(135deg, #FF6B6B 0%, #8E54E9 100%);
+
+  /* Status */
+  --ok:      #24AAA5;   --ok-bg:   #E7F6F5;
+  --warn:    #E8A33D;   --warn-bg: #FCF3E3;
+  --danger:  #E5556E;   --danger-bg:#FBE9EC;
+  --info:    #2F80ED;   --info-bg: #E9F1FE;
+
+  /* Neutrals */
+  --bg:        #F6F8F9;
+  --surface:   #FFFFFF;
+  --surface-2: #F1F5F5;
+  --ink:       #14201F;
+  --ink-2:     #47575A;
+  --ink-3:     #8394969;
+  --muted:     #8B9A9C;
+  --line:      #E7ECEC;
+
+  /* Pastel blobs */
+  --blob-1: #CDEDEA;
+  --blob-2: #DDE9FB;
+  --blob-3: #FBE7EF;
+
+  /* Radii */
+  --r-sm: 12px;
+  --r:    18px;
+  --r-lg: 26px;
+  --r-xl: 34px;
+  --r-pill: 999px;
+
+  /* Shadows */
+  --sh-sm: 0 2px 8px rgba(20,60,58,.06);
+  --sh:    0 8px 24px rgba(20,60,58,.08);
+  --sh-lg: 0 18px 44px rgba(20,60,58,.12);
+  --sh-teal: 0 14px 30px rgba(36,170,165,.35);
+
+  /* Type */
+  --font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Layout */
+  --nav-h: 72px;
+  --max: 1200px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
