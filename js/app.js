@@ -202,9 +202,14 @@ function noProfileState() {
     <p class="sub">Your account has no attendance profile yet. This usually means the database schema
     (<code>db/schema.sql</code>) hasn't been run on this Supabase project, or the profile trigger didn't fire.</p>
     <p class="small muted">Project: ${SUPABASE_URL.replace('https://', '')}</p>`;
-  const out = el('button.btn.btn--primary.btn--block', { style: { marginTop: '18px' } }, 'Sign out');
+  const retry = el('button.btn.btn--primary.btn--block', { style: { marginTop: '18px' } }, 'Retry');
+  retry.addEventListener('click', async () => {
+    retry.disabled = true; retry.textContent = 'Checking…';
+    await boot();
+  });
+  const out = el('button.btn.btn--pill-line.btn--block', { style: { marginTop: '10px' } }, 'Sign out');
   out.addEventListener('click', doLogout);
-  c.append(out);
+  c.append(retry, out);
   s.append(c);
   return s;
 }

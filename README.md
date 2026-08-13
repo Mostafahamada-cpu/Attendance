@@ -67,6 +67,12 @@ the SQL editor. It promotes the admin, sets departments, and seeds Fri/Sat off-d
 (You can also just flip a role by hand:
 `update public.ta_profiles set role='admin' where email='admin@ringroad.re';`)
 
+### d2. (Optional) Bulk-provision the team
+To create/align the full employee roster in one shot, run [`db/provision-users.sql`](db/provision-users.sql)
+in the SQL Editor. It is idempotent and safe on the shared project: it creates only accounts that
+don't already exist (existing passwords untouched), sets each person's role/department, seeds leave
+balances, and prints a report of who is admin vs employee and which accounts were newly created.
+
 ### e. Run it
 ```bash
 cd attendance-app

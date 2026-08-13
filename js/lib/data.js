@@ -32,8 +32,10 @@ export const Balances = {
 // ---- Leave requests -------------------------------------------------------
 export const Leaves = {
   mine: (empId = userId()) => db.list('ta_leave_requests', `employee_id=eq.${empId}&select=*&order=created_at.desc`),
-  pending: () => db.list('ta_leave_requests', `status=eq.pending&select=*,ta_profiles(full_name,department,avatar_url)&order=created_at.asc`),
-  all: () => db.list('ta_leave_requests', `select=*,ta_profiles(full_name,department,avatar_url)&order=created_at.desc`),
+  // ta_leave_requests has TWO FKs to ta_profiles (employee_id + reviewed_by), so the
+  // embed MUST name the FK. !employee_id = the requester's profile. Response key stays "ta_profiles".
+  pending: () => db.list('ta_leave_requests', `status=eq.pending&select=*,ta_profiles!employee_id(full_name,department,avatar_url)&order=created_at.asc`),
+  all: () => db.list('ta_leave_requests', `select=*,ta_profiles!employee_id(full_name,department,avatar_url)&order=created_at.desc`),
   create: (row) => db.create('ta_leave_requests', { ...row, employee_id: userId() }),
   review: (id, decision) => db.rpc('ta_review_leave', { p_request_id: id, p_decision: decision }),
 };
