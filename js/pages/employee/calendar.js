@@ -1,6 +1,6 @@
-import { Attendance, OffDays } from '../../lib/data.js';
-import { el, icon, pill, pageHead } from '../../lib/ui.js';
-import { ymd, todayYMD, fmtHM, minToHM, fmtLongDate, MONTHS, DOW } from '../../lib/time.js';
+import { Attendance, OffDays } from '../../lib/data.js?v=20260813c';
+import { el, icon, pill, pageHead } from '../../lib/ui.js?v=20260813c';
+import { ymd, todayYMD, fmtHM, minToHM, fmtLongDate, MONTHS, DOW } from '../../lib/time.js?v=20260813c';
 
 export default async function calendarPage({ profile, navigate }) {
   const now = new Date();

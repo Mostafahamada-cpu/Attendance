@@ -1,6 +1,6 @@
-import { auth } from '../lib/supabase.js';
-import { el, icon } from '../lib/ui.js';
-import { toast, toastErr, toastOk, modal } from '../lib/toast.js';
+import { auth } from '../lib/supabase.js?v=20260813c';
+import { el, icon } from '../lib/ui.js?v=20260813c';
+import { toast, toastErr, toastOk, modal } from '../lib/toast.js?v=20260813c';
 
 export default function loginPage({ onAuthed }) {
   const wrap = el('div.auth.fade-up');
@@ -45,7 +45,7 @@ export default function loginPage({ onAuthed }) {
   google.addEventListener('click', () => {
     const url = new URL(location.href);
     const redirect = url.origin + url.pathname;
-    import('../../config.js').then(({ SUPABASE_URL }) => {
+    import('../../config.js?v=20260813c').then(({ SUPABASE_URL }) => {
       location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirect)}`;
     });
   });

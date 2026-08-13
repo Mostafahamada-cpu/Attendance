@@ -1,6 +1,6 @@
 // Minimal Supabase client over fetch(): GoTrue auth + PostgREST + RPC.
 // Isolated session key so it never collides with the main platform app.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SESSION_KEY } from '../../config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SESSION_KEY } from '../../config.js?v=20260813c';
 
 const AUTH = SUPABASE_URL + '/auth/v1';
 const REST = SUPABASE_URL + '/rest/v1';

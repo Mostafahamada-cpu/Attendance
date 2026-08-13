@@ -1,5 +1,5 @@
-import { Profiles, Balances } from '../../lib/data.js';
-import { el, icon, avatar, emptyState } from '../../lib/ui.js';
+import { Profiles, Balances } from '../../lib/data.js?v=20260813c';
+import { el, icon, avatar, emptyState } from '../../lib/ui.js?v=20260813c';
 
 export default async function adminBalances() {
   const [people, balances] = await Promise.all([Profiles.all(), Balances.all()]);

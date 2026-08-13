@@ -4,6 +4,10 @@
 # lets the app deploy to Vercel/Netlify without a build step and avoids the
 # "/config.js 404" error. Never put the service_role key here.
 
+# Real credentials input (you fill this with actual existing passwords) — never
+# commit. The blank template credentials-input.example.csv IS committed instead.
+db/credentials-input.csv
+
 # OS / editor noise
 .DS_Store
 Thumbs.db
