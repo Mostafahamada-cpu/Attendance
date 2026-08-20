@@ -35,3 +35,19 @@ select
   has_table_privilege('authenticated','public.ta_attendance','INSERT')     as attendance_insert,
   has_table_privilege('authenticated','public.ta_leave_requests','SELECT') as leave_requests_select,
   has_table_privilege('authenticated','public.ta_leave_requests','INSERT') as leave_requests_insert;
+
+-- ── v2 tables (db/schema-v2.sql) ────────────────────────────────────────────
+--  These are intentionally SELECT-only for the `authenticated` role: every
+--  write goes through a SECURITY DEFINER RPC so the business rules (2 weekend
+--  changes, rest-day availability, the geofence) can't be skipped by calling
+--  PostgREST directly. Run db/schema-v2.sql first — it creates these objects
+--  and issues the same grants; this block is only here for re-verification.
+do $$ begin
+  grant select on
+    public.ta_settings, public.ta_weekend_change_requests,
+    public.ta_rest_balances, public.ta_rest_day_requests, public.ta_geo_attempts
+  to authenticated;
+  grant update on public.ta_settings to authenticated;   -- gated by RLS: admins only
+exception when undefined_table then
+  raise notice 'v2 tables not found — run db/schema-v2.sql first.';
+end $$;

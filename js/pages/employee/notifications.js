@@ -1,13 +1,20 @@
-import { Notifs } from '../../lib/data.js?v=20260813d';
-import { el, icon, pageHead, emptyState } from '../../lib/ui.js?v=20260813d';
-import { ago } from '../../lib/time.js?v=20260813d';
-import { toastOk } from '../../lib/toast.js?v=20260813d';
+import { Notifs } from '../../lib/data.js?v=20260820a';
+import { el, icon, pageHead, emptyState } from '../../lib/ui.js?v=20260820a';
+import { ago } from '../../lib/time.js?v=20260820a';
+import { toastOk } from '../../lib/toast.js?v=20260820a';
 
 const STYLE = {
   leave_approved: ['checkcircle', 'var(--teal)', 'var(--teal-050)'],
   leave_denied: ['xcircle', 'var(--danger)', 'var(--danger-bg)'],
   leave_submitted: ['calplus', 'var(--info)', 'var(--info-bg)'],
   reminder: ['reminder', 'var(--warn)', 'var(--warn-bg)'],
+  // v2 — weekend changes and rest days
+  weekend_approved: ['swap', 'var(--teal)', 'var(--teal-050)'],
+  weekend_rejected: ['xcircle', 'var(--danger)', 'var(--danger-bg)'],
+  weekend_submitted: ['swap', 'var(--info)', 'var(--info-bg)'],
+  rest_approved: ['checkcircle', 'var(--teal)', 'var(--teal-050)'],
+  rest_denied: ['xcircle', 'var(--danger)', 'var(--danger-bg)'],
+  rest_submitted: ['moon', 'var(--info)', 'var(--info-bg)'],
   info: ['info', 'var(--info)', 'var(--info-bg)'],
 };
 

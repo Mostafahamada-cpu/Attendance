@@ -296,3 +296,98 @@ table.tbl tbody tr:hover { background: var(--surface-2); }
 @media (min-width: 640px) {
   .screen { padding: 26px 22px; }
 }
+
+/* ==========================================================================
+   v2 — Geofence · weekend changes · rest days
+   ========================================================================== */
+
+/* ---- Location status strip (employee home) -------------------------------- */
+.geo-strip { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 12px 14px;
+  border-radius: var(--r); background: var(--surface-2); border: 1.5px solid transparent; }
+.geo-strip .gi { display: flex; flex: none; width: 34px; height: 34px; border-radius: 11px;
+  align-items: center; justify-content: center; background: #fff; }
+.geo-strip .gi .ic { width: 19px; height: 19px; }
+.geo-strip .gt { font-size: 13.5px; font-weight: 700; line-height: 1.3; }
+.geo-strip .gs { font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+.geo-strip--ok   { background: var(--ok-bg);     border-color: rgba(36,170,165,.35); }
+.geo-strip--ok .gi   { color: var(--teal); }
+.geo-strip--bad  { background: var(--danger-bg); border-color: rgba(229,85,110,.35); }
+.geo-strip--bad .gi  { color: var(--danger); }
+.geo-strip--bad .gt  { color: #C43B54; }
+.geo-strip--warn { background: var(--warn-bg);   border-color: rgba(232,163,61,.35); }
+.geo-strip--warn .gi { color: var(--warn); }
+.geo-strip--idle .gi { color: var(--ink-2); }
+.geo-act { flex: none; height: 32px; padding: 0 14px; border-radius: var(--r-pill); background: #fff;
+  border: 1.5px solid var(--line); font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.geo-act:active { transform: scale(.95); }
+.geo-detail { background: var(--surface-2); border-radius: var(--r-sm); padding: 6px 14px; }
+
+/* ---- Admin geofence config ------------------------------------------------ */
+.geo-coords { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.geo-coord { background: var(--surface-2); border-radius: var(--r-sm); padding: 12px 14px; min-width: 0; }
+.geo-coord .cv { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+  margin-top: 3px; word-break: break-all; }
+.range { flex: 1; -webkit-appearance: none; appearance: none; height: 8px; border-radius: 99px;
+  background: var(--surface-2); outline: none; }
+.range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 26px; height: 26px;
+  border-radius: 50%; background: var(--teal); box-shadow: var(--sh-teal); cursor: pointer; border: 3px solid #fff; }
+.range::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: var(--teal);
+  cursor: pointer; border: 3px solid #fff; }
+.range-val { flex: none; min-width: 74px; text-align: center; font-size: 15px; font-weight: 800;
+  font-variant-numeric: tabular-nums; background: var(--teal-050); color: var(--teal-700);
+  border-radius: var(--r-pill); padding: 7px 0; }
+
+/* ---- Weekend allowance pips ---------------------------------------------- */
+.pips { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pip { border-radius: var(--r); padding: 12px 14px; border: 1.5px dashed var(--line); background: var(--surface-2); }
+.pip .pn { display: block; font-size: 12px; font-weight: 800; color: var(--ink-2); }
+.pip .pl { display: block; font-size: 11.5px; margin-top: 3px; color: var(--muted); }
+.pip--used    { border-style: solid; background: var(--ok-bg); border-color: rgba(36,170,165,.4); }
+.pip--used .pn, .pip--used .pl { color: var(--teal-700); }
+.pip--pending { border-style: solid; background: var(--warn-bg); border-color: rgba(232,163,61,.4); }
+.pip--pending .pn, .pip--pending .pl { color: #B9791A; }
+
+/* ---- Day chips (weekend picker) ------------------------------------------ */
+.day-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.day-chip { height: 44px; border-radius: 13px; background: var(--surface-2); color: var(--ink-2);
+  font-size: 12.5px; font-weight: 700; display: grid; place-content: center; transition: all .15s; }
+.day-chip.on { background: var(--teal); color: #fff; box-shadow: var(--sh-teal); }
+.day-chip:active { transform: scale(.93); }
+.arr { display: inline-flex; color: var(--muted); }
+.ic-sm { width: 16px; height: 16px; }
+.rest-ic { width: 26px; height: 26px; color: var(--teal); flex: none; }
+
+/* ---- Rest-day picker ------------------------------------------------------ */
+.rest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 8px; }
+.rest-day { border-radius: 14px; background: var(--surface-2); padding: 9px 4px; display: grid; gap: 1px;
+  justify-items: center; transition: all .15s; border: 1.5px solid transparent; }
+.rest-day .rd-dow { font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+.rest-day .rd-num { font-size: 18px; font-weight: 800; line-height: 1.1; }
+.rest-day .rd-mo  { font-size: 9.5px; color: var(--muted); text-align: center; line-height: 1.2; }
+.rest-day.on { background: var(--teal); color: #fff; box-shadow: var(--sh-teal); }
+.rest-day.on .rd-dow, .rest-day.on .rd-mo { color: rgba(255,255,255,.85); }
+.rest-day.off { opacity: .45; cursor: not-allowed; background: transparent; border-color: var(--line); }
+.rest-day:not(.off):active { transform: scale(.93); }
+.rest-counter { display: flex; align-items: baseline; gap: 8px; margin-top: 14px; padding: 11px 14px;
+  border-radius: var(--r); background: var(--ok-bg); }
+.rest-counter .rc-n { font-size: 15px; font-weight: 800; color: var(--teal-700); }
+.rest-counter .rc-s { font-size: 12px; color: var(--muted); }
+.rest-counter--bad { background: var(--danger-bg); }
+.rest-counter--bad .rc-n { color: #C43B54; }
+
+/* ---- Responsive tweaks for the wider admin sidebar ----------------------- */
+.sidebar { overflow-y: auto; }
+@media (max-width: 900px) {
+  .sidebar { justify-content: flex-start; gap: 2px; -webkit-overflow-scrolling: touch; }
+  .side-link { flex: 0 0 auto; min-width: 58px; }
+}
+@media (max-width: 420px) {
+  .geo-coords { grid-template-columns: 1fr; }
+  .rest-grid { grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 6px; }
+  .day-chip { height: 40px; font-size: 11.5px; border-radius: 11px; }
+}
+
+/* A `1fr` grid track defaults to min-width:auto, so a date input's intrinsic
+   width can push the second column past the viewport on narrow phones.
+   Applies to Apply Leave and the rest-day period picker alike. */
+.two > * { min-width: 0; }

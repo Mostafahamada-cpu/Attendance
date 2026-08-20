@@ -75,6 +75,11 @@ const ICONS = {
   activity: '<path d="M3 12h4l3 8 4-16 3 8h4"/>',
   reminder: '<path d="M12 3a6 6 0 0 0-6 6c0 5-2 6-2 6h16s-2-1-2-6a6 6 0 0 0-6-6Z"/><path d="M10 20a2 2 0 0 0 4 0M12 3V1.5"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.1"/>',
+  pin: '<path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/>',
+  pinoff: '<path d="M3 3l18 18"/><path d="M18.4 14.6A19 19 0 0 0 19 10a7 7 0 0 0-10.9-5.8"/><path d="M5.6 7.1A7 7 0 0 0 5 10c0 5.4 7 11 7 11a34 34 0 0 0 3.3-3.2"/>',
+  target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22"/>',
+  swap: '<path d="M4 8h13M14 5l3 3-3 3"/><path d="M20 16H7M10 13l-3 3 3 3"/>',
+  arrowR: '<path d="M5 12h14M13 6l6 6-6 6"/>',
 };
 export function icon(name, cls = '') {
   const body = ICONS[name] || ICONS.info;

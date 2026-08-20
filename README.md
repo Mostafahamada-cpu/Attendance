@@ -20,14 +20,17 @@ attendance-app/
 ├── css/                    # tokens · base · components (design system)
 ├── db/
 │   ├── schema.sql          # tables, RLS, triggers, atomic leave-review RPC
+│   ├── schema-v2.sql       # ← geofence · weekend changes · rest days (run after schema.sql)
 │   └── seed.sql            # role promotion + demo off-days (edit emails)
 └── js/
     ├── app.js              # session, routing, employee + admin shells
-    ├── lib/                # supabase · data · ui · time · toast
+    ├── lib/                # supabase · data · ui · time · toast · geo
     └── pages/
         ├── login.js
-        ├── employee/       # home · apply-leave · my-leaves · calendar · notifications · chat · more
-        └── admin/          # dashboard · leaves · employees · balances · offdays · analytics
+        ├── employee/       # home · apply-leave · my-leaves · calendar · notifications ·
+        │                   #   chat · more · weekend · rest-days
+        └── admin/          # dashboard · leaves · employees · balances · offdays ·
+                            #   weekend · rest-days · geofence · analytics
 ```
 
 ## 2. Setup (≈ 5 minutes)
@@ -55,6 +58,34 @@ so it never touches existing platform tables. This creates:
   (12 casual / 8 medical / 5 planned = 25 total; edit in `ta_handle_new_user()`);
 - `ta_review_leave(request_id, decision)` — a `SECURITY DEFINER` RPC that approves/denies
   **atomically**: flips status, deducts balance on approval, and notifies the employee.
+
+### b2. Run the v2 migration (REQUIRED)
+Then paste and run [`db/schema-v2.sql`](db/schema-v2.sql). It is additive and idempotent —
+it never drops a table or a row — and it is what makes clock in/out, weekend changes and
+rest days work. It adds:
+
+`ta_settings` (geofence centre, radius, rest allotment) · `ta_weekend_change_requests` ·
+`ta_rest_balances` · `ta_rest_day_requests` · `ta_geo_attempts`, geofence columns on
+`ta_attendance`, and the SECURITY DEFINER RPCs that are now the **only** write path for
+these features:
+
+| RPC | Enforces |
+| --- | --- |
+| `ta_clock_in` / `ta_clock_out` | Recomputes the distance server-side and refuses anything outside the radius; logs every attempt |
+| `ta_request_weekend_change` | Max 2 changes; #1 auto-approved, #2 pending |
+| `ta_review_weekend_change` | Admin-only; applies the new off-days on approval |
+| `ta_request_rest_days` | Availability + overlap checks |
+| `ta_review_rest_days` | Admin-only; deducts the balance atomically |
+| `ta_set_geofence` | Admin-only; radius clamped to 100–200 m |
+| `ta_set_rest_balance` | Admin-only; total can't drop below days already used |
+
+The migration also **revokes** employees' direct `INSERT`/`UPDATE` on `ta_attendance`, so
+the geofence cannot be skipped by hand-crafting a PostgREST call.
+
+> Verify it landed:
+> ```sql
+> select geofence_lat, geofence_lng, geofence_radius_m, rest_days_default from public.ta_settings;
+> ```
 
 ### c. Create users
 **Dashboard → Authentication → Users → Add user** (tick **Auto Confirm User**). Create at
@@ -87,6 +118,10 @@ duplicate-clock-in prevention · today's stats · leave-balance donut rings · a
 with full validation · My Leaves with status pills · month calendar honouring each person's
 off-days · functional notifications · Chat placeholder · More/profile/change-password/logout.
 
+**Employee (v2):** live location strip with your distance from the office · geofenced
+Clock In/Out with a per-failure explanation · **My Weekend** (allowance meter, day picker,
+change history) · **Rest Days** (balance rings, period + exact-date picker, request history).
+
 **Admin (desktop-first, responsive):** KPI dashboard (present / working / not-in / pending /
 team) · live "Who's In Right Now" (polls every 20s) · leave requests with **Approve/Deny →
 balance auto-updates + notification** · employee drill-down (calendar stats, history, weekly
@@ -94,12 +129,85 @@ pattern) · team leave-balance table with search & smart filters · per-employee
 editor · analytics (today/week/month/custom → total & avg hours, attendance rate, late
 arrivals, absences, daily-hours chart).
 
+**Admin (v2):** **Weekend Changes** (usage per employee, 1st vs 2nd slot, approve/reject the
+second with a note) · **Rest Days** (review requests, per-employee balance table, set totals)
+· **Geofence** (coordinates, 100–200 m radius slider, GPS-accuracy threshold, enforcement
+toggle, today's clock in/out locations, and a filterable log of every passed and blocked
+attempt with distance, accuracy and a maps link).
+
+## 3b. Attendance rules (v2)
+
+### Clock in / clock out geofence
+The official attendance location is **29.979897570225, 31.357097369334436**, with a
+**150 m** default radius that an admin can set anywhere between **100 m and 200 m**
+(*Admin → Geofence*). Pressing Clock In or Clock Out reads the device GPS, measures the
+real distance to that point, and only proceeds if you are inside the radius; the home
+screen shows a live status strip with your distance before you tap.
+
+The check is **not** frontend-only. `ta_clock_in` / `ta_clock_out` recompute the distance
+in Postgres from `ta_settings` — any distance sent by the client is ignored — and refuse
+readings with missing, impossible or implausibly coarse coordinates. Because employees no
+longer hold `INSERT`/`UPDATE` on `ta_attendance`, calling PostgREST directly cannot create
+an attendance row at all. Every attempt, allowed or blocked, is written to
+`ta_geo_attempts` with lat, lng, accuracy, distance, radius, result and timestamp, and the
+same values are stored on the attendance row itself.
+
+> The RPCs deliberately **return** `{ ok: false, error, reason }` rather than raising when
+> the geofence refuses — a `raise` would roll back the audit row along with the rejection,
+> leaving the log full of successes only.
+
+GPS problems are handled explicitly, each with its own message and recovery action:
+permission denied (with per-browser instructions), location services off, timeout (retried
+once with a coarse-fix fallback), unsupported browser, insecure (non-HTTPS) origin, and
+readings too inaccurate to trust.
+
+### Weekend changes — 2 per employee, ever
+*Employee → More → My Weekend* shows how many changes are used and how many remain.
+
+1. **First change** — approved automatically and applied the moment it's submitted.
+2. **Second change** — submitted as a request; an admin approves or rejects it in
+   *Admin → Weekend Changes*, and only approval updates the weekly off-days.
+3. **Third** — refused.
+
+The cap lives in the database: `change_number` is `CHECK`ed to 1–2 and a partial unique
+index allows only one live request per slot, on top of the guard inside
+`ta_request_weekend_change`. A request **rejected by an admin** does not consume an
+allowance, so the employee can submit a different one; pending and approved ones do. A new
+weekend must have the same number of days as the current one — you move it, not lengthen it.
+
+### Rest days
+*Employee → More → Rest Days*. Pick the **period** (from → to), then tick the **exact
+dates** inside it. Availability is `total − used − days already reserved by pending
+requests`; the picker caps selection at that number, greys out dates that clash with your
+weekly off-days, an existing rest request or a leave request, and refuses past dates.
+
+`ta_request_rest_days` re-checks all of it server-side and rejects an over-budget request
+with a clear message, so trimming the payload in devtools changes nothing. Each request
+stores the selected dates, the count, the balance before, and — once approved — the balance
+after. Admins review requests and set each person's total in *Admin → Rest Days*;
+approval deducts the balance atomically and re-verifies it at approval time.
+
 ## 4. Security (defence in depth)
 
-Row Level Security is enabled on every table. Employees can read/write **only their own**
+Row Level Security is enabled on every table. Employees can read **only their own**
 attendance, leave requests, balances, notifications and profile; admins see all. Approvals
 run through the `ta_review_leave` RPC so balance math can't be tampered with from the client.
 Frontend route guards are a convenience only — the database is the real gate.
+
+The v2 tables go further: employees hold **`SELECT` only** on
+`ta_weekend_change_requests`, `ta_rest_day_requests`, `ta_rest_balances` and
+`ta_geo_attempts`, and employees' direct `INSERT`/`UPDATE` on `ta_attendance` is revoked.
+Every write happens inside a `SECURITY DEFINER` RPC that re-validates the rule, takes a
+row lock where two parallel calls could race (the last weekend slot, the last rest day),
+and is the only path that exists. `ta_settings.geofence_radius_m` additionally carries a
+`CHECK (between 100 and 200)`, so even an admin PATCHing the table directly cannot set an
+out-of-range radius.
+
+**Honest limitation:** a determined user on a rooted/jailbroken device or with a mock-location
+app can feed the browser false coordinates — no browser-based geofence can rule that out.
+What the server does guarantee is that the coordinates it *was* given are the ones it
+judged, that the verdict and radius are its own, and that every attempt is recorded for an
+admin to review.
 
 ## 5. Realtime
 
@@ -134,6 +242,26 @@ add your deployed URL to the redirect allow-list.
 7. Set an employee's **off-days** → confirm the calendar marks those days as off.
 8. Resize to mobile/tablet/desktop → layouts adapt (bottom nav ↔ sidebar).
 9. Log out / back in → session restore works.
+
+**v2 checklist**
+
+10. **Weekend #1** → applied instantly, status *Auto-approved*, off-days change, 1 left.
+11. **Weekend #2** → status *Pending*; admin approves → off-days change; admin rejects →
+    the slot frees up and the employee can submit a different one.
+12. **Weekend #3** → refused ("You have used all 2 of your weekend changes").
+13. **Rest days within balance** → submitted as Pending; the available count drops by the
+    reserved days immediately.
+14. **Rest days over balance** → the picker won't select past the limit, and a hand-built
+    `ta_request_rest_days` call is refused with "You do not have enough available rest days".
+15. **Clock In inside 150 m** → allowed; row carries lat/lng/distance/radius/result.
+16. **Clock In outside the radius** → blocked with the standard message plus your distance;
+    a `ta_geo_attempts` row is written with `passed = false`.
+17. **Clock Out inside / outside** → same rule, same log.
+18. **Deny location permission** → clear message + per-browser fix instructions, no crash.
+19. **Bypass attempt** → `POST /rest/v1/ta_attendance` as an employee returns 401/403
+    (policy), and `rpc/ta_clock_in` with off-site coordinates returns `ok: false`.
+20. **Admin → Geofence** → move the radius slider (bounded 100–200 m) and save; the new
+    radius applies to the next clock in/out.
 ```
 
 **Verified already:** the app boots with zero console errors, all 20 modules load, the login
