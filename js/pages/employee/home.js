@@ -1,18 +1,17 @@
-import { Attendance, Balances, Settings, RestDays } from '../../lib/data.js?v=20260820a';
-import { el, icon, avatar, ring, iconEl } from '../../lib/ui.js?v=20260820a';
-import { toastOk, toastErr, confirmDialog, modal } from '../../lib/toast.js?v=20260820a';
-import { fmtTime, fmtHM, fmtLongDate, minToHM, minToDur } from '../../lib/time.js?v=20260820a';
+import { Attendance, Balances, Settings } from '../../lib/data.js?v=20260820b';
+import { el, icon, avatar, ring } from '../../lib/ui.js?v=20260820b';
+import { toastOk, toastErr, confirmDialog, modal } from '../../lib/toast.js?v=20260820b';
+import { fmtTime, fmtHM, fmtLongDate, minToHM, minToDur } from '../../lib/time.js?v=20260820b';
 import {
   getPositionWithFallback, evaluate, fmtDistance, permissionState,
   isSupported, isSecureOrigin, GeoError, DEFAULT_GEOFENCE,
-} from '../../lib/geo.js?v=20260820a';
+} from '../../lib/geo.js?v=20260820b';
 
 export default async function empHome({ profile, navigate, refresh }) {
-  const [today, balances, cfg, restBal] = await Promise.all([
+  const [today, balances, cfg] = await Promise.all([
     Attendance.today(),
     Balances.mine(),
     Settings.get().catch(() => null),          // pre-v2 database → fall back
-    RestDays.balance().catch(() => null),
   ]);
   const geofence = cfg || DEFAULT_GEOFENCE;
 
@@ -283,20 +282,6 @@ export default async function empHome({ profile, navigate, refresh }) {
   // ── Leave balance ─────────────────────────────────────────────────────────
   screen.append(sectionHead('Leave Balance', 'View all', () => navigate('#/leaves')));
   screen.append(leaveBalanceCard(balances));
-
-  // ── Rest days + weekend ───────────────────────────────────────────────────
-  if (restBal) {
-    const restCard = el('div.card.row.between', { style: { marginTop: '14px', gap: '14px' } });
-    const left = el('div.grow');
-    left.append(
-      el('div.card-title', 'Rest Days'),
-      el('div.card-sub', `${restBal.remaining_days} of ${restBal.total_days} available`),
-    );
-    const go = el('button.btn.btn--ghost.btn--sm', 'Request');
-    go.addEventListener('click', () => navigate('#/rest-days'));
-    restCard.append(iconEl('moon', 'rest-ic'), left, go);
-    screen.append(restCard);
-  }
 
   // ── Quick actions ─────────────────────────────────────────────────────────
   const quick = el('div.row.wrap', { style: { gap: '12px', marginTop: '16px' } });

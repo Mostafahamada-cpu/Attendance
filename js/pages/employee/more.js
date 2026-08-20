@@ -1,7 +1,7 @@
-import { auth } from '../../lib/supabase.js?v=20260820a';
-import { Notifs } from '../../lib/data.js?v=20260820a';
-import { el, icon, avatar, pageHead } from '../../lib/ui.js?v=20260820a';
-import { toastOk, toastErr, modal, confirmDialog } from '../../lib/toast.js?v=20260820a';
+import { auth } from '../../lib/supabase.js?v=20260820b';
+import { Notifs } from '../../lib/data.js?v=20260820b';
+import { el, icon, avatar, pageHead } from '../../lib/ui.js?v=20260820b';
+import { toastOk, toastErr, modal, confirmDialog } from '../../lib/toast.js?v=20260820b';
 
 export default async function morePage({ profile, navigate }) {
   const unread = (await Notifs.unread().catch(() => [])).length;
@@ -16,12 +16,16 @@ export default async function morePage({ profile, navigate }) {
     el('div', { style: { fontSize: '18px', fontWeight: '800' } }, profile.full_name),
     el('div.small.muted', profile.email || ''),
     el('div.pill.pill--present', { style: { marginTop: '8px' } }, `${profile.position || 'Employee'} · ${profile.department || 'General'}`),
+    profile.is_manager ? el('div.pill.pill--working', { style: { marginTop: '6px' } }, 'Manager — can approve leave') : null,
   );
   pcard.append(info);
   screen.append(pcard);
 
   // Menu
   const menu1 = el('div.menu', { style: { marginTop: '16px' } });
+  if (profile.is_manager) {
+    menu1.append(item('inbox', 'Approvals', () => navigate('#/approvals')));
+  }
   menu1.append(
     item('user', 'My Profile', () => showProfile(profile)),
     item('calplus', 'My Leaves', () => navigate('#/leaves')),
@@ -91,7 +95,9 @@ function toggleItem(ic, label, key) {
 
 function showProfile(p) {
   const body = el('div');
-  const rows = [['Name', p.full_name], ['Email', p.email], ['Role', p.role], ['Department', p.department], ['Position', p.position]];
+  const rows = [['Name', p.full_name], ['Email', p.email], ['Role', p.role],
+    ['Approves leave', p.is_manager ? 'Yes (manager)' : 'No'],
+    ['Department', p.department], ['Position', p.position]];
   rows.forEach(([k, v]) => {
     const r = el('div.row.between', { style: { padding: '11px 0', borderBottom: '1px solid var(--line)' } });
     r.append(el('span.small.muted', k), el('span.b.small', v || '—'));

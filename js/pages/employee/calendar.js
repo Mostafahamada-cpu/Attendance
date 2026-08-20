@@ -1,6 +1,6 @@
-import { Attendance, OffDays } from '../../lib/data.js?v=20260820a';
-import { el, icon, pill, pageHead } from '../../lib/ui.js?v=20260820a';
-import { ymd, todayYMD, fmtHM, minToHM, fmtLongDate, MONTHS, DOW } from '../../lib/time.js?v=20260820a';
+import { Attendance, OffDays, Leaves, leaveStage, STAGE_LABEL, STAGE_PILL } from '../../lib/data.js?v=20260820b';
+import { el, icon, pill, pageHead } from '../../lib/ui.js?v=20260820b';
+import { ymd, todayYMD, fmtHM, minToHM, fmtLongDate, fmtShortDate, MONTHS, DOW } from '../../lib/time.js?v=20260820b';
 
 export default async function calendarPage({ profile, navigate }) {
   const now = new Date();
@@ -33,6 +33,8 @@ export default async function calendarPage({ profile, navigate }) {
     <span><i style="background:var(--teal)"></i>Present</span>
     <span><i style="background:var(--danger)"></i>Absent</span>
     <span><i style="background:var(--ink-3)"></i>Off day</span>
+    <span><i style="background:var(--info)"></i>Leave approved</span>
+    <span><i style="background:var(--warn)"></i>Leave pending</span>
     <span><i style="box-shadow:inset 0 0 0 2px var(--teal);background:transparent"></i>Today</span>`;
   card.append(legend);
   screen.append(card);
@@ -40,11 +42,30 @@ export default async function calendarPage({ profile, navigate }) {
   const detail = el('div.card', { style: { marginTop: '14px' } });
   screen.append(detail);
 
+  let leaveByDate = {};
+
   async function draw() {
     moLabel.textContent = `${MONTHS[month]} ${year}`;
     grid.replaceChildren();
-    const records = await Attendance.forMonth(profile.id, year, month);
+    const [records, leaves] = await Promise.all([
+      Attendance.forMonth(profile.id, year, month),
+      Leaves.forMonth(profile.id, year, month).catch(() => []),
+    ]);
     const byDate = Object.fromEntries(records.map(r => [r.work_date, r]));
+
+    // Expand each request across the days it covers. Approved wins over
+    // pending when two requests somehow touch the same day.
+    leaveByDate = {};
+    for (const l of leaves) {
+      const stage = leaveStage(l);
+      if (stage === 'denied') continue;
+      for (const d = new Date(l.start_date + 'T00:00:00'); ymd(d) <= l.end_date; d.setDate(d.getDate() + 1)) {
+        const key = ymd(d);
+        if (!leaveByDate[key] || (stage === 'approved' && leaveStage(leaveByDate[key]) !== 'approved')) {
+          leaveByDate[key] = l;
+        }
+      }
+    }
 
     const first = new Date(year, month, 1).getDay();
     const daysIn = new Date(year, month + 1, 0).getDate();
@@ -58,7 +79,9 @@ export default async function calendarPage({ profile, navigate }) {
       const cell = el('div.cal-cell', String(d));
       const isFuture = date > today;
 
+      const lv = leaveByDate[date];
       if (offDays.has(jsDow)) cell.classList.add('weekend');
+      else if (lv) cell.classList.add(leaveStage(lv) === 'approved' ? 'leave' : 'leave-pending');
       else if (rec) cell.classList.add('present');
       else if (!isFuture) cell.classList.add('absent');
 
@@ -82,13 +105,32 @@ export default async function calendarPage({ profile, navigate }) {
     grid.children[idx]?.classList.add('sel');
 
     const off = offDays.has(jsDow);
+    const lv = leaveByDate[date];
     const status = off ? 'weekend' : rec ? (rec.status === 'completed' ? 'present' : 'working') : isFuture ? null : 'absent';
 
     detail.replaceChildren();
-    const top = el('div.row.between', { style: { marginBottom: '14px' } });
+    const top = el('div.row.between', { style: { marginBottom: '14px', gap: '10px' } });
     top.append(el('div.b', fmtLongDate(new Date(date + 'T00:00:00'))));
-    if (status) top.append(pill(status === 'present' ? 'present' : status));
+    if (lv) {
+      const stage = leaveStage(lv);
+      top.append(el('span.pill.pill--' + (STAGE_PILL[stage] || 'plain'), STAGE_LABEL[stage] || stage));
+    } else if (status) {
+      top.append(pill(status === 'present' ? 'present' : status));
+    }
     detail.append(top);
+
+    if (lv) {
+      const box = el('div', { style: { marginBottom: rec ? '14px' : '0' } });
+      box.append(el('div.small.b', `${cap(lv.leave_type)} Leave · ${lv.days} day${lv.days > 1 ? 's' : ''}`));
+      box.append(el('div.tiny.muted', { style: { marginTop: '3px' } },
+        `${fmtShortDate(lv.start_date)} → ${fmtShortDate(lv.end_date)}`));
+      if (lv.reason) box.append(el('p.small.muted', { style: { marginTop: '6px' } }, lv.reason));
+      if (leaveStage(lv) !== 'approved') {
+        box.append(el('p.tiny.muted', { style: { marginTop: '6px' } },
+          'Not yet approved — this day is still provisional.'));
+      }
+      detail.append(box);
+    }
 
     if (rec) {
       const g = el('div.stat-3');
@@ -99,7 +141,9 @@ export default async function calendarPage({ profile, navigate }) {
       );
       detail.append(g);
     } else {
-      detail.append(el('p.small.muted', off ? 'Scheduled weekly off day.' : isFuture ? 'Upcoming day.' : 'No attendance recorded.'));
+      if (!lv) {
+        detail.append(el('p.small.muted', off ? 'Scheduled weekly off day.' : isFuture ? 'Upcoming day.' : 'No attendance recorded.'));
+      }
     }
   }
 
@@ -116,3 +160,5 @@ function detailStat(ic, label, value) {
   t.innerHTML = `<div class="ic">${icon(ic)}</div><div class="v">${value}</div><div class="k">${label}</div>`;
   return t;
 }
+
+function cap(s) { return (s || '').charAt(0).toUpperCase() + (s || '').slice(1); }

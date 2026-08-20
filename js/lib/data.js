@@ -1,6 +1,6 @@
 // Domain data access — all ta_* tables. Thin wrappers over supabase db.
-import { db, userId } from './supabase.js?v=20260820a';
-import { todayYMD, ymd } from './time.js?v=20260820a';
+import { db, userId } from './supabase.js?v=20260820b';
+import { todayYMD, ymd } from './time.js?v=20260820b';
 
 // ---- Profiles -------------------------------------------------------------
 export const Profiles = {
@@ -8,6 +8,10 @@ export const Profiles = {
   all: () => db.list('ta_profiles', 'select=*&order=full_name.asc'),
   get: (id) => db.one('ta_profiles', `id=eq.${id}&select=*`),
   update: (id, patch) => db.update('ta_profiles', `id=eq.${id}`, patch),
+  // Manager rights are privileged: a DB trigger rejects any non-admin trying to
+  // change role/is_manager, so this must go through the RPC.
+  setManager: (id, on) => db.rpc('ta_set_manager', { p_employee: id, p_is_manager: !!on }),
+  managers: () => db.list('ta_profiles', 'is_manager=is.true&select=*&order=full_name.asc'),
 };
 
 // ---- Attendance -----------------------------------------------------------
@@ -54,15 +58,80 @@ export const Balances = {
 };
 
 // ---- Leave requests -------------------------------------------------------
+// Two-stage approval (db/schema-v3.sql): a request is created `pending` and
+// carries an independent decision slot for the manager and for the admin.
+// It becomes `approved` — and ONLY THEN is the balance deducted — once every
+// required slot has approved. A rejection from either slot denies it outright.
 export const Leaves = {
   mine: (empId = userId()) => db.list('ta_leave_requests', `employee_id=eq.${empId}&select=*&order=created_at.desc`),
-  // ta_leave_requests has TWO FKs to ta_profiles (employee_id + reviewed_by), so the
-  // embed MUST name the FK. !employee_id = the requester's profile. Response key stays "ta_profiles".
+  // ta_leave_requests now has FOUR FKs to ta_profiles (employee_id, reviewed_by,
+  // manager_by, admin_by), so every embed MUST name the FK it means.
+  // !employee_id = the requester's profile; the response key stays "ta_profiles".
   pending: () => db.list('ta_leave_requests', `status=eq.pending&select=*,ta_profiles!employee_id(full_name,department,avatar_url)&order=created_at.asc`),
   all: () => db.list('ta_leave_requests', `select=*,ta_profiles!employee_id(full_name,department,avatar_url)&order=created_at.desc`),
-  create: (row) => db.create('ta_leave_requests', { ...row, employee_id: userId() }),
-  review: (id, decision) => db.rpc('ta_review_leave', { p_request_id: id, p_decision: decision }),
+  forMonth: (empId, y, m) => {
+    const from = ymd(new Date(y, m, 1)), to = ymd(new Date(y, m + 1, 0));
+    // Any request that overlaps the month at all.
+    return db.list('ta_leave_requests',
+      `employee_id=eq.${empId}&start_date=lte.${to}&end_date=gte.${from}&select=*&order=start_date.asc`);
+  },
+  // Submitting NEVER moves a balance — the RPC creates a pending row only.
+  request: ({ type, start, end, reason, attachmentPath, attachmentName }) =>
+    db.rpc('ta_request_leave', {
+      p_leave_type: type, p_start: start, p_end: end,
+      p_reason: reason || null,
+      p_attachment_path: attachmentPath || null,
+      p_attachment_name: attachmentName || null,
+    }),
+  review: (id, decision, note) => db.rpc('ta_review_leave',
+    { p_request_id: id, p_decision: decision, p_note: note || null }),
+  // Days requested but not yet decided. They don't touch the balance, but they
+  // do reduce what can still be requested.
+  pendingDays: (rows, type) => (rows || [])
+    .filter(r => r.status === 'pending' && (!type || r.leave_type === type))
+    .reduce((s, r) => s + r.days, 0),
 };
+
+// The workflow stage shown in the UI — mirrors public.ta_leave_stage().
+//   pending | waiting_admin | waiting_manager | approved | denied
+export function leaveStage(r) {
+  if (!r) return 'pending';
+  if (r.status === 'approved') return 'approved';
+  if (r.status === 'denied') return 'denied';
+  if (r.manager_decision === 'denied' || r.admin_decision === 'denied') return 'denied';
+  const needAdmin = r.requires_admin !== false && !r.admin_decision;
+  const needMgr = r.requires_manager !== false && !r.manager_decision;
+  if (needAdmin && needMgr) return 'pending';
+  if (needAdmin) return 'waiting_admin';
+  if (needMgr) return 'waiting_manager';
+  return 'approved';
+}
+
+export const STAGE_LABEL = {
+  pending: 'Pending',
+  waiting_admin: 'Waiting for Admin',
+  waiting_manager: 'Waiting for Manager',
+  approved: 'Approved',
+  denied: 'Rejected',
+};
+
+// Which pill class each stage maps onto (reuses the existing pill palette).
+export const STAGE_PILL = {
+  pending: 'pending',
+  waiting_admin: 'working',
+  waiting_manager: 'working',
+  approved: 'approved',
+  denied: 'denied',
+};
+
+// Can this viewer still record a decision on this request?
+export function canReview(r, profile) {
+  if (!r || !profile || r.status !== 'pending') return false;
+  if (r.employee_id === profile.id) return false;         // never your own
+  if (profile.role === 'admin' && r.requires_admin !== false && !r.admin_decision) return true;
+  if (profile.is_manager && r.requires_manager !== false && !r.manager_decision) return true;
+  return false;
+}
 
 // ---- Weekly off days ------------------------------------------------------
 export const OffDays = {
@@ -108,9 +177,11 @@ export const RestDays = {
   pendingDays: (rows) => (rows || []).filter(r => r.status === 'pending').reduce((s, r) => s + r.days_count, 0),
 };
 
-// ---- Settings (geofence config) ------------------------------------------
+// ---- Settings (geofence + approval flow) ---------------------------------
 export const Settings = {
   get: () => db.one('ta_settings', 'id=eq.true&select=*'),
+  setApprovalFlow: ({ requireManager, requireAdmin }) => db.rpc('ta_set_approval_flow',
+    { p_require_manager: requireManager, p_require_admin: requireAdmin }),
   setGeofence: ({ radius, lat = null, lng = null, enabled = null, maxAccuracy = null }) =>
     db.rpc('ta_set_geofence', {
       p_radius: radius, p_lat: lat, p_lng: lng, p_enabled: enabled, p_max_accuracy: maxAccuracy,

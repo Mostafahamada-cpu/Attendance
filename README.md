@@ -21,14 +21,16 @@ attendance-app/
 ├── db/
 │   ├── schema.sql          # tables, RLS, triggers, atomic leave-review RPC
 │   ├── schema-v2.sql       # ← geofence · weekend changes · rest days (run after schema.sql)
+│   ├── schema-v3.sql       # ← manager role · two-stage leave approval (run after v2)
 │   └── seed.sql            # role promotion + demo off-days (edit emails)
 └── js/
     ├── app.js              # session, routing, employee + admin shells
-    ├── lib/                # supabase · data · ui · time · toast · geo
+    ├── lib/                # supabase · data · ui · time · toast · geo · storage
     └── pages/
         ├── login.js
+        ├── shared/         # leave-review (used by the admin AND manager screens)
         ├── employee/       # home · apply-leave · my-leaves · calendar · notifications ·
-        │                   #   chat · more · weekend · rest-days
+        │                   #   chat · more · weekend · rest-days · approvals (managers)
         └── admin/          # dashboard · leaves · employees · balances · offdays ·
                             #   weekend · rest-days · geofence · analytics
 ```
@@ -87,6 +89,31 @@ the geofence cannot be skipped by hand-crafting a PostgREST call.
 > select geofence_lat, geofence_lng, geofence_radius_m, rest_days_default from public.ta_settings;
 > ```
 
+### b3. Run the v3 migration (REQUIRED)
+Finally, paste and run [`db/schema-v3.sql`](db/schema-v3.sql). Additive and idempotent
+like the others. It turns leave into a real two-stage HR workflow and adds:
+
+- **`ta_profiles.is_manager`** — the manager capability. A manager is an ordinary employee
+  (they still clock in and take leave) who can also approve leave. Deliberately a boolean
+  rather than a new `ta_role` enum value: an enum value can't be *used* in the same
+  transaction that adds it, which would make a one-script migration fragile. Every existing
+  `role = 'employee' / 'admin'` check is untouched.
+- **Dual-approval columns** on `ta_leave_requests` — an independent decision slot for the
+  manager and for the admin, plus `attachment_path`, `balance_before` and `balance_after`.
+- **`ta_request_leave(...)`** and a rewritten **`ta_review_leave(id, decision, note)`**.
+- **A private Storage bucket** `ta-leave-files` for medical certificates, with policies
+  letting an employee read only their own folder and approvers read all. If your project
+  can't create the bucket the migration still succeeds — it prints a notice and the app
+  simply hides the attachment field.
+- **A privilege-escalation fix.** The existing `ta_profiles` UPDATE policy allows
+  `id = auth.uid()`, which also let a user set their own `role = 'admin'`. A trigger now
+  blocks any non-admin from changing `role` or `is_manager`. Direct database sessions (the
+  SQL editor, `service_role`) are exempt, so `seed.sql` keeps working.
+
+> After running it, give at least one person manager rights — **Admin → Employees → pick a
+> person → Manager rights** — or leave requests will sit at *Waiting for Manager* forever.
+> The admin Leave Requests screen shows a warning until you do.
+
 ### c. Create users
 **Dashboard → Authentication → Users → Add user** (tick **Auto Confirm User**). Create at
 least one admin and two employees, e.g. `admin@ringroad.re`, `employee1@…`, `employee2@…`.
@@ -122,12 +149,22 @@ off-days · functional notifications · Chat placeholder · More/profile/change-
 Clock In/Out with a per-failure explanation · **My Weekend** (allowance meter, day picker,
 change history) · **Rest Days** (balance rings, period + exact-date picker, request history).
 
+**Employee (v3):** Apply Leave with live day count, per-type availability and a
+remaining-after-approval preview · optional attachment (medical certificates) · My Leaves
+showing the two-step approval trail per request · calendar overlay for approved and
+pending leave. **Managers** additionally get an **Approvals** tab.
+
 **Admin (desktop-first, responsive):** KPI dashboard (present / working / not-in / pending /
 team) · live "Who's In Right Now" (polls every 20s) · leave requests with **Approve/Deny →
 balance auto-updates + notification** · employee drill-down (calendar stats, history, weekly
 pattern) · team leave-balance table with search & smart filters · per-employee weekly off-day
 editor · analytics (today/week/month/custom → total & avg hours, attendance rate, late
 arrivals, absences, daily-hours chart).
+
+**Admin (v3):** **Leave Requests** rebuilt around dual approval — *Awaiting you / In
+progress / Approved / Rejected* buckets, full request detail with balance and attachment,
+an approval trail, and an **Approval flow** card for which approvers are required ·
+**Employees** gains a per-person **Manager rights** toggle.
 
 **Admin (v2):** **Weekend Changes** (usage per employee, 1st vs 2nd slot, approve/reject the
 second with a note) · **Rest Days** (review requests, per-employee balance table, set totals)
@@ -187,6 +224,84 @@ stores the selected dates, the count, the balance before, and — once approved 
 after. Admins review requests and set each person's total in *Admin → Rest Days*;
 approval deducts the balance atomically and re-verifies it at approval time.
 
+## 3c. Leave workflow (v3)
+
+### Applying
+**Home → Apply Leave** (or *My Leaves → New Leave Request*). Pick the type — Casual,
+Medical or Planned — then **From Date** and **To Date**. The number of requested days is
+calculated live and inclusively, so 25 Aug → 28 Aug is **4 days**. A To Date before the
+From Date, or a start date in the past, blocks submission with an inline message.
+
+Beneath the dates the card shows the balance for the selected type, anything already
+awaiting approval, what is **available to request**, and — once the request is valid —
+**remaining after approval**. Reason is optional. An attachment is optional too, allowed
+for any type and prompted for Medical ("Attach a medical certificate if your organisation
+requires one"); files are PDFs or images up to 5 MB, stored privately.
+
+`ta_request_leave()` re-runs every one of those checks server-side, so editing the request
+in devtools changes nothing. Employees no longer hold `INSERT` on `ta_leave_requests` —
+the RPC is the only way in.
+
+### Availability vs. balance
+Submitting **never** moves a balance. But pending days can't be double-spent either, so
+what you may still request is `remaining − days already awaiting approval`. With 9 casual
+days remaining and 7 pending, 2 are available; asking for 3 is refused with
+*"only 2 are available (7 already awaiting approval)"*.
+
+### Two-stage approval
+Every request goes to **both** the manager and the admin, and either may act first:
+
+```
+Employee submits            → Pending
+Manager approves            → Waiting for Admin      ─┐
+Admin approves              → Approved                │  either order
+Admin approves              → Waiting for Manager    ─┘
+Manager approves            → Approved
+Either one rejects          → Rejected  (immediately)
+```
+
+`status` keeps its original three values — `pending` / `approved` / `denied` — so nothing
+that already reads it breaks. *Waiting for Admin* and *Waiting for Manager* are **derived**
+from the two decision slots by `ta_leave_stage()` (mirrored in JS by `leaveStage()`), which
+also means leave rows created before this migration still read correctly.
+
+Guard rails, all enforced in `ta_review_leave()`: you can never review your own request,
+you can never fill the same slot twice, and someone who is *both* an admin and a manager
+fills one slot per call — so a single person still can't close a two-approver request in
+one click. The approval dialog says which it is: **"Approve & pass on"** versus
+**"This is the final approval — 4 day(s) will be deducted"**.
+
+### The balance moves once, at the end
+Only final approval touches `ta_leave_balances`, and it re-checks the balance at that
+moment in case it shifted since submission. `Total` never changes:
+
+| | Total | Used | Remaining |
+|---|---|---|---|
+| Before | 25 | 0 | 25 |
+| 4 days requested, **pending** | 25 | 0 | 25 |
+| After **final** approval | 25 | 4 | 21 |
+
+Nobody — not even an admin — can `UPDATE` `ta_leave_requests` directly; the policy is
+dropped and the grant revoked. Without that, an admin could PATCH `status` straight to
+`approved` and the deduction would never run.
+
+### Who reviews where
+- **Admin → Leave Requests**: the full queue, bucketed *Awaiting you / In progress /
+  Approved / Rejected*, plus an **Approval flow** card to toggle which approvers are
+  required (at least one, enforced by a table CHECK).
+- **Manager → Approvals**: managers stay in the employee shell and get an Approvals tab
+  (in Chat's slot) plus a *More* entry. Same review card as the admin sees.
+
+Both show employee name, leave type, from/to, day count, reason, current balance, the
+attachment, the request status, and a two-step approval trail with each approver's note
+and timestamp.
+
+### Calendar
+Approved leave shows in blue, pending leave in amber, alongside the existing present /
+absent / off-day / today states, with a legend entry for each. Tapping a leave day shows
+the type, span and reason, and marks pending days *"Not yet approved — this day is still
+provisional."*
+
 ## 4. Security (defence in depth)
 
 Row Level Security is enabled on every table. Employees can read **only their own**
@@ -202,6 +317,12 @@ row lock where two parallel calls could race (the last weekend slot, the last re
 and is the only path that exists. `ta_settings.geofence_radius_m` additionally carries a
 `CHECK (between 100 and 200)`, so even an admin PATCHing the table directly cannot set an
 out-of-range radius.
+
+v3 tightens two more things. Employees lose `INSERT` on `ta_leave_requests` and *nobody*
+retains `UPDATE`, so the "deduct only on final approval" rule has no bypass. And a trigger
+closes a pre-existing privilege-escalation hole: `ta_prof_upd` allows `id = auth.uid()`,
+which also let any user set their own `role = 'admin'` — changing `role` or `is_manager`
+now requires an admin (or a direct database session, so seeding still works).
 
 **Honest limitation:** a determined user on a rooted/jailbroken device or with a mock-location
 app can feed the browser false coordinates — no browser-based geofence can rule that out.
@@ -262,6 +383,28 @@ add your deployed URL to the redirect allow-list.
     (policy), and `rpc/ta_clock_in` with off-site coordinates returns `ok: false`.
 20. **Admin → Geofence** → move the radius slider (bounded 100–200 m) and save; the new
     radius applies to the next clock in/out.
+
+**v3 checklist — leave workflow**
+
+21. Home shows **no Rest Days card**; Leave Balance, *View all*, *Apply Leave* and
+    *Calendar* are all unchanged. (Rest Days still lives at *More → Rest Days*.)
+22. **25 Aug → 28 Aug** shows **4 days**. A To Date before the From Date, and a start date
+    in the past, both block submission with an inline message.
+23. Request **more days than remain** → blocked, with the shortfall named. Trimming the
+    request in devtools and calling `rpc/ta_request_leave` directly → refused too.
+24. **Submit** → status *Pending*, and Total/Used/Remaining are **unchanged**.
+25. **Manager approves** → *Waiting for Admin*, balance still unchanged.
+26. **Admin approves** → *Approved*; Used +N, Remaining −N, Total the same.
+27. Reverse the order — **admin first** → *Waiting for Manager* → manager approves →
+    *Approved*. Same result.
+28. **Either approver rejects** → *Rejected* immediately, balance untouched.
+29. An approver **cannot review their own request**, and cannot fill the same slot twice.
+    Someone who is both admin and manager needs two separate approvals.
+30. **Calendar** shows approved leave in blue and pending leave in amber, each in the legend.
+31. Attach a PDF/image to a **Medical** request → the approver can open it from the review
+    card via a short-lived signed URL.
+32. With **no managers assigned**, the admin Leave Requests screen shows the warning banner
+    and offers the manager-approval toggle as the fix.
 ```
 
 **Verified already:** the app boots with zero console errors, all 20 modules load, the login

@@ -1,13 +1,14 @@
-import { Profiles, Attendance, OffDays } from '../../lib/data.js?v=20260820a';
-import { el, icon, avatar, pill, emptyState } from '../../lib/ui.js?v=20260820a';
-import { ymd, todayYMD, fmtShortDate, fmtHM, minToHM, minToDur, MONTHS, DOW } from '../../lib/time.js?v=20260820a';
+import { Profiles, Attendance, OffDays } from '../../lib/data.js?v=20260820b';
+import { el, icon, avatar, pill, emptyState } from '../../lib/ui.js?v=20260820b';
+import { toastOk, toastErr } from '../../lib/toast.js?v=20260820b';
+import { ymd, todayYMD, fmtShortDate, fmtHM, minToHM, minToDur, MONTHS, DOW } from '../../lib/time.js?v=20260820b';
 
 export default async function adminEmployees() {
   const people = (await Profiles.all()).filter(p => p.role === 'employee');
   const screen = el('div.fade-up');
   screen.append(el('div', { style: { marginBottom: '20px' } },
     el('h1', { style: { fontSize: '26px', fontWeight: '800' } }, 'Employees'),
-    el('p.muted.small', 'Select an employee to inspect their attendance')));
+    el('p.muted.small', 'Select an employee to inspect their attendance, or give them manager rights to approve leave')));
 
   const search = el('div.input-icon', { style: { marginBottom: '18px', maxWidth: '360px' } });
   search.innerHTML = `<span class="i-lead">${icon('search')}</span>`;
@@ -26,7 +27,12 @@ export default async function adminEmployees() {
     if (!rows.length) { grid.append(el('div.card', emptyState('users', 'No employees found'))); return; }
     for (const p of rows) {
       const c = el('button.card.row', { style: { gap: '12px', textAlign: 'left', width: '100%', cursor: 'pointer' } });
-      c.append(avatar(p, 'sm'), el('div.grow', el('div.b', p.full_name), el('div.tiny.muted', `${p.position || 'Employee'} · ${p.department || 'General'}`)), iconSpan('chevR'));
+      const info = el('div.grow');
+      info.append(el('div.row', { style: { gap: '7px' } },
+        el('span.b', p.full_name),
+        p.is_manager ? el('span.pill.pill--working', { style: { height: '20px', fontSize: '10.5px', padding: '0 8px' } }, 'Manager') : null));
+      info.append(el('div.tiny.muted', `${p.position || 'Employee'} · ${p.department || 'General'}`));
+      c.append(avatar(p, 'sm'), info, iconSpan('chevR'));
       c.addEventListener('click', () => openDetail(p));
       grid.append(c);
     }
@@ -62,6 +68,18 @@ export default async function adminEmployees() {
     const workdays = countWorkdays(now.getFullYear(), now.getMonth(), offSet, todayYMD());
     const absent = Math.max(0, workdays - present);
 
+    // ── Manager rights ───────────────────────────────────────────────────
+    //  A manager is still an ordinary employee — they clock in and take leave
+    //  as normal — but they also fill the manager slot on leave approvals.
+    const mgrRow = el('div.row.between', {
+      style: { padding: '13px 15px', background: 'var(--surface-2)', borderRadius: 'var(--r)', marginBottom: '18px', gap: '12px' },
+    });
+    mgrRow.append(el('div.grow',
+      el('div.small.b', 'Manager rights'),
+      el('div.tiny.muted', 'Can review and approve leave requests')));
+    mgrRow.append(managerToggle(p));
+    panel.append(mgrRow);
+
     const stats = el('div.stat-3', { style: { marginBottom: '18px' } });
     stats.append(mini('Present', present), mini('Absent', absent), mini('Avg Hrs', recs.length ? minToHM(totalMin / recs.length) : '00:00'));
     panel.append(el('div.card-sub.b', { style: { marginBottom: '8px' } }, `${MONTHS[now.getMonth()]} ${now.getFullYear()}`), stats);
@@ -88,6 +106,35 @@ export default async function adminEmployees() {
   sInput.addEventListener('input', () => drawList(sInput.value));
   drawList();
   return screen;
+}
+
+// Toggling manager rights goes through ta_set_manager(): a database trigger
+// rejects any non-admin trying to change role/is_manager directly.
+function managerToggle(p) {
+  let state = !!p.is_manager;
+  const sw = el('div', { style: {
+    width: '46px', height: '27px', borderRadius: '99px', padding: '3px', transition: 'background .2s',
+    background: state ? 'var(--teal)' : 'var(--line)', cursor: 'pointer', flex: 'none' } });
+  const knob = el('div', { style: { width: '21px', height: '21px', borderRadius: '50%', background: '#fff',
+    transition: 'transform .2s', transform: state ? 'translateX(19px)' : 'none', boxShadow: '0 1px 3px rgba(0,0,0,.2)' } });
+  sw.append(knob);
+  const paint = () => {
+    sw.style.background = state ? 'var(--teal)' : 'var(--line)';
+    knob.style.transform = state ? 'translateX(19px)' : 'none';
+  };
+  sw.addEventListener('click', async () => {
+    const next = !state;
+    state = next; paint();
+    try {
+      await Profiles.setManager(p.id, next);
+      p.is_manager = next;
+      toastOk(next ? `${p.full_name.split(' ')[0]} can now approve leave` : `Manager rights removed from ${p.full_name.split(' ')[0]}`);
+    } catch (e) {
+      state = !next; paint();          // roll the switch back
+      toastErr(e.message);
+    }
+  });
+  return sw;
 }
 
 function iconSpan(name) { const s = el('span', { style: { color: 'var(--ink-3)' } }); s.innerHTML = icon(name); return s; }

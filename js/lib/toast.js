@@ -1,4 +1,4 @@
-import { el, icon } from './ui.js?v=20260820a';
+import { el, icon } from './ui.js?v=20260820b';
 
 let root;
 function ensure() { return (root ||= document.getElementById('toast-root')); }

@@ -391,3 +391,87 @@ table.tbl tbody tr:hover { background: var(--surface-2); }
    width can push the second column past the viewport on narrow phones.
    Applies to Apply Leave and the rest-day period picker alike. */
 .two > * { min-width: 0; }
+
+/* ==========================================================================
+   v3 — Leave workflow (apply · approval trail · calendar leave days)
+   ========================================================================== */
+
+/* ---- Apply Leave: live day / balance calculation -------------------------- */
+.leave-calc { background: var(--surface-2); border-radius: var(--r); padding: 13px 15px;
+  border: 1.5px solid transparent; transition: background .2s, border-color .2s; }
+.leave-calc--bad { background: var(--danger-bg); border-color: rgba(229,85,110,.3); }
+.leave-calc .lc-days { font-size: 20px; font-weight: 800; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; color: var(--teal-700); }
+.leave-calc--bad .lc-days { color: #C43B54; }
+
+/* ---- Attachment picker ---------------------------------------------------- */
+.attach-zone { width: 100%; display: grid; justify-items: center; gap: 3px; padding: 16px 14px;
+  border-radius: var(--r); border: 1.5px dashed var(--line); background: var(--surface);
+  transition: border-color .15s, background .15s; }
+.attach-zone:hover { border-color: var(--teal); background: var(--teal-050); }
+.attach-zone:disabled { opacity: .6; cursor: progress; }
+.attach-zone.on { border-style: solid; border-color: var(--teal); background: var(--teal-050); }
+.attach-zone .az-ic { color: var(--teal); display: flex; }
+.attach-zone .az-ic .ic { width: 22px; height: 22px; }
+.attach-zone .az-t { font-size: 13.5px; font-weight: 700; word-break: break-all; text-align: center; }
+.attach-zone .az-s { font-size: 11.5px; color: var(--muted); }
+.attach-status { margin-top: 8px; text-align: center; }
+.attach-row { display: flex; align-items: center; gap: 9px; padding: 9px 12px; margin-bottom: 4px;
+  background: var(--surface-2); border-radius: var(--r-sm); }
+.attach-row .ai { color: var(--teal); display: flex; flex: none; }
+
+/* ---- Approval trail (admin / manager review card) ------------------------- */
+.trail { display: grid; gap: 8px; margin: 12px 0; padding: 11px 13px;
+  background: var(--surface-2); border-radius: var(--r); }
+.trail-step { display: flex; align-items: center; gap: 10px; }
+.trail-step .td { width: 24px; height: 24px; border-radius: 50%; flex: none;
+  display: grid; place-content: center; background: #fff; color: var(--muted); }
+.trail-step .tl { font-size: 12.5px; font-weight: 700; }
+.trail-step .ts { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.trail-step .tn { font-size: 11px; color: var(--ink-2); font-style: italic;
+  max-width: 45%; text-align: right; }
+.trail-step--ok .td   { background: var(--ok-bg); color: var(--teal); }
+.trail-step--no .td   { background: var(--danger-bg); color: var(--danger); }
+.trail-step--wait .td { background: var(--warn-bg); color: var(--warn); }
+.trail-step--skip { opacity: .5; }
+
+/* ---- Compact trail on the employee's own leave cards ---------------------- */
+.mini-trail { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.mini-trail .mt-sep { color: var(--ink-3); display: flex; }
+.mini-trail .mt-step { display: inline-flex; align-items: center; gap: 5px; height: 24px;
+  padding: 0 10px; border-radius: var(--r-pill); font-size: 11.5px; font-weight: 700;
+  background: var(--surface-2); color: var(--ink-2); }
+.mini-trail .mt-i { display: flex; }
+.mini-trail .mt-step--ok   { background: var(--ok-bg); color: var(--teal-700); }
+.mini-trail .mt-step--no   { background: var(--danger-bg); color: #C43B54; }
+.mini-trail .mt-step--wait { background: var(--warn-bg); color: #B9791A; }
+
+/* ---- Warning banner ------------------------------------------------------- */
+.banner { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;
+  border-radius: var(--r); margin-bottom: 18px; border: 1.5px solid transparent; }
+.banner .bi { display: flex; flex: none; margin-top: 1px; }
+.banner .bi .ic { width: 20px; height: 20px; }
+.banner--warn { background: var(--warn-bg); border-color: rgba(232,163,61,.4); color: #8A5A12; }
+.banner--warn .bi { color: var(--warn); }
+
+/* ---- Calendar: leave days ------------------------------------------------- */
+.cal-cell.leave { background: var(--info-bg); color: var(--info); }
+.cal-cell.leave::after { content:''; position:absolute; bottom: 6px; width: 5px; height: 5px;
+  border-radius: 50%; background: var(--info); }
+.cal-cell.leave-pending { background: var(--warn-bg); color: #B9791A; }
+.cal-cell.leave-pending::after { content:''; position:absolute; bottom: 6px; width: 5px; height: 5px;
+  border-radius: 50%; background: var(--warn); }
+.cal-cell.sel.leave, .cal-cell.sel.leave-pending { background: var(--teal); color: #fff; }
+
+@media (max-width: 420px) {
+  .trail-step .tn { max-width: 100%; text-align: left; }
+  .trail-step { flex-wrap: wrap; }
+}
+
+/* Pre-existing collision: the calendar's leading blank cells carry `.empty`,
+   which also matches the empty-STATE rule `.empty { padding: 40px 20px }`
+   defined later in this file. That padding inflated the 1fr tracks and pushed
+   the whole grid past the viewport on any month not starting on a Sunday.
+   Reset it, and pin the tracks so no child's intrinsic size can do it again. */
+.cal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.cal-cell.empty { padding: 0; }

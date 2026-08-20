@@ -80,6 +80,8 @@ const ICONS = {
   target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22"/>',
   swap: '<path d="M4 8h13M14 5l3 3-3 3"/><path d="M20 16H7M10 13l-3 3 3 3"/>',
   arrowR: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  minus: '<path d="M5 12h14"/>',
+  inbox: '<path d="M3 13h4l2 3h6l2-3h4"/><path d="M5.5 5h13l2.5 8v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5Z"/>',
 };
 export function icon(name, cls = '') {
   const body = ICONS[name] || ICONS.info;

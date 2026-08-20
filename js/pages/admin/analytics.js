@@ -1,6 +1,6 @@
-import { Profiles, Attendance } from '../../lib/data.js?v=20260820a';
-import { el, icon } from '../../lib/ui.js?v=20260820a';
-import { ymd, fmtDayMon, minToHM, minToHoursDec, DOW } from '../../lib/time.js?v=20260820a';
+import { Profiles, Attendance } from '../../lib/data.js?v=20260820b';
+import { el, icon } from '../../lib/ui.js?v=20260820b';
+import { ymd, fmtDayMon, minToHM, minToHoursDec, DOW } from '../../lib/time.js?v=20260820b';
 
 const LATE_HOUR = 9, LATE_MIN = 15;   // arrivals after 09:15 count as late
 

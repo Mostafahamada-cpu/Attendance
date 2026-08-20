@@ -1,29 +1,30 @@
 // RingRoad Attendance — entry point: session, routing, app shells.
-import { auth, getSession, setLogoutHandler } from './lib/supabase.js?v=20260820a';
-import { Profiles, Notifs } from './lib/data.js?v=20260820a';
-import { el, icon, avatar, mount } from './lib/ui.js?v=20260820a';
-import { toastErr } from './lib/toast.js?v=20260820a';
-import { SUPABASE_URL } from '../config.js?v=20260820a';
+import { auth, getSession, setLogoutHandler } from './lib/supabase.js?v=20260820b';
+import { Profiles, Notifs } from './lib/data.js?v=20260820b';
+import { el, icon, avatar, mount } from './lib/ui.js?v=20260820b';
+import { toastErr } from './lib/toast.js?v=20260820b';
+import { SUPABASE_URL } from '../config.js?v=20260820b';
 
-import loginPage from './pages/login.js?v=20260820a';
-import empHome from './pages/employee/home.js?v=20260820a';
-import empApply from './pages/employee/apply-leave.js?v=20260820a';
-import empLeaves from './pages/employee/my-leaves.js?v=20260820a';
-import empCalendar from './pages/employee/calendar.js?v=20260820a';
-import empNotifs from './pages/employee/notifications.js?v=20260820a';
-import empChat from './pages/employee/chat.js?v=20260820a';
-import empMore from './pages/employee/more.js?v=20260820a';
-import empWeekend from './pages/employee/weekend.js?v=20260820a';
-import empRest from './pages/employee/rest-days.js?v=20260820a';
-import admDashboard from './pages/admin/dashboard.js?v=20260820a';
-import admLeaves from './pages/admin/leaves.js?v=20260820a';
-import admEmployees from './pages/admin/employees.js?v=20260820a';
-import admBalances from './pages/admin/balances.js?v=20260820a';
-import admOffdays from './pages/admin/offdays.js?v=20260820a';
-import admAnalytics from './pages/admin/analytics.js?v=20260820a';
-import admWeekend from './pages/admin/weekend.js?v=20260820a';
-import admRest from './pages/admin/rest-days.js?v=20260820a';
-import admGeofence from './pages/admin/geofence.js?v=20260820a';
+import loginPage from './pages/login.js?v=20260820b';
+import empHome from './pages/employee/home.js?v=20260820b';
+import empApply from './pages/employee/apply-leave.js?v=20260820b';
+import empLeaves from './pages/employee/my-leaves.js?v=20260820b';
+import empCalendar from './pages/employee/calendar.js?v=20260820b';
+import empNotifs from './pages/employee/notifications.js?v=20260820b';
+import empChat from './pages/employee/chat.js?v=20260820b';
+import empMore from './pages/employee/more.js?v=20260820b';
+import empWeekend from './pages/employee/weekend.js?v=20260820b';
+import empRest from './pages/employee/rest-days.js?v=20260820b';
+import empApprovals from './pages/employee/approvals.js?v=20260820b';
+import admDashboard from './pages/admin/dashboard.js?v=20260820b';
+import admLeaves from './pages/admin/leaves.js?v=20260820b';
+import admEmployees from './pages/admin/employees.js?v=20260820b';
+import admBalances from './pages/admin/balances.js?v=20260820b';
+import admOffdays from './pages/admin/offdays.js?v=20260820b';
+import admAnalytics from './pages/admin/analytics.js?v=20260820b';
+import admWeekend from './pages/admin/weekend.js?v=20260820b';
+import admRest from './pages/admin/rest-days.js?v=20260820b';
+import admGeofence from './pages/admin/geofence.js?v=20260820b';
 
 const appRoot = document.getElementById('app');
 export const state = { profile: null, unread: 0 };
@@ -32,7 +33,7 @@ export const state = { profile: null, unread: 0 };
 const EMP_ROUTES = {
   home: empHome, apply: empApply, leaves: empLeaves, attendance: empCalendar,
   notifications: empNotifs, chat: empChat, more: empMore,
-  weekend: empWeekend, 'rest-days': empRest,
+  weekend: empWeekend, 'rest-days': empRest, approvals: empApprovals,
 };
 const ADM_ROUTES = {
   admin: admDashboard, 'admin/leaves': admLeaves, 'admin/employees': admEmployees,
@@ -42,13 +43,19 @@ const ADM_ROUTES = {
 
 export function navigate(hash) { location.hash = hash; }
 
-const EMP_NAV = [
-  { r: 'home', icon: 'home', label: 'Home' },
-  { r: 'chat', icon: 'chat', label: 'Chat' },
-  { r: 'attendance', icon: 'calendar', label: 'Attendance' },
-  { r: 'notifications', icon: 'bell', label: 'Alerts', badge: true },
-  { r: 'more', icon: 'more', label: 'More' },
-];
+// Managers are employees with approval rights, so they keep the employee shell
+// and gain an Approvals tab (in Chat's slot — five tabs stay the maximum).
+function empNav() {
+  const approvals = { r: 'approvals', icon: 'inbox', label: 'Approvals' };
+  const chat = { r: 'chat', icon: 'chat', label: 'Chat' };
+  return [
+    { r: 'home', icon: 'home', label: 'Home' },
+    state.profile?.is_manager ? approvals : chat,
+    { r: 'attendance', icon: 'calendar', label: 'Attendance' },
+    { r: 'notifications', icon: 'bell', label: 'Alerts', badge: true },
+    { r: 'more', icon: 'more', label: 'More' },
+  ];
+}
 const ADM_NAV = [
   { r: 'admin', icon: 'grid', label: 'Dashboard' },
   { r: 'admin/leaves', icon: 'calplus', label: 'Leave Requests' },
@@ -65,7 +72,7 @@ const ADM_NAV = [
 function empShell(routeKey) {
   const content = el('div#route');
   const nav = el('nav.botnav');
-  for (const item of EMP_NAV) {
+  for (const item of empNav()) {
     const a = el('a' + (routeKey === item.r ? '.on' : ''), { href: '#/' + item.r });
     a.innerHTML = icon(item.icon, 'ic') + `<span>${item.label}</span>`;
     if (item.badge && state.unread > 0) {
@@ -126,6 +133,8 @@ async function render() {
   // Route guard: admins land on admin, employees can't see admin.
   if (isAdmin && !key.startsWith('admin')) { navigate('#/admin'); return; }
   if (!isAdmin && key.startsWith('admin')) { navigate('#/home'); return; }
+
+  if (key === 'approvals' && !state.profile?.is_manager) { navigate('#/home'); return; }
 
   const table = isAdmin ? ADM_ROUTES : EMP_ROUTES;
   const page = table[key] || table[isAdmin ? 'admin' : 'home'];
