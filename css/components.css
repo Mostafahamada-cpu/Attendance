@@ -143,7 +143,7 @@
 .sidebar { background: var(--surface); border-right: 1px solid var(--line); padding: 22px 16px; position: sticky;
   top: 0; height: 100vh; display: flex; flex-direction: column; gap: 4px; }
 .sidebar .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; }
-.sidebar .brand .mk { width: 38px; height: 38px; border-radius: 12px; background: var(--grad-in); box-shadow: var(--sh-teal); }
+.sidebar .brand .mk { width: 38px; height: 38px; flex: none; display: block; }
 .sidebar .brand b { font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
 .sidebar .brand span { font-size: 11px; color: var(--muted); display:block; }
 .side-link { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r);
@@ -276,6 +276,7 @@ table.tbl tbody tr:hover { background: var(--surface-2); }
   box-shadow: var(--sh-lg); padding: 34px 28px; }
 .auth-logo { width: 62px; height: 62px; border-radius: 20px; background: var(--grad-in); box-shadow: var(--sh-teal);
   display: grid; place-content: center; margin: 0 auto 18px; color:#fff; }
+.auth-brand { display: block; width: min(240px, 74%); height: auto; margin: 0 auto 20px; }
 .auth h1 { text-align: center; font-size: 23px; font-weight: 800; letter-spacing: -.02em; }
 .auth .sub { text-align: center; color: var(--muted); font-size: 13.5px; margin: 6px 0 24px; }
 .auth .alt { text-align: center; font-size: 13px; color: var(--muted); margin-top: 18px; }

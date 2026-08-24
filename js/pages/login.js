@@ -5,7 +5,7 @@ import { toast, toastErr, toastOk, modal } from '../lib/toast.js?v=20260820b';
 export default function loginPage({ onAuthed }) {
   const wrap = el('div.auth.fade-up');
   const card = el('div.auth-card');
-  card.innerHTML = `<div class="auth-logo">${icon('clock')}</div>
+  card.innerHTML = `<img class="auth-brand" src="./assets/brand/logo-horizontal.svg" alt="Attendance" width="272" height="72">
     <h1>Welcome back</h1>
     <p class="sub">Sign in to clock in and manage your time off</p>`;
 

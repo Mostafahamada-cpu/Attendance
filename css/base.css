@@ -26,8 +26,8 @@ a { color: inherit; text-decoration: none; }
 
 /* Boot splash */
 .boot { display: grid; place-content: center; gap: 22px; height: 100vh; }
-.boot__logo { width: 74px; height: 74px; border-radius: 22px; margin: 0 auto;
-  background: var(--grad-in); box-shadow: var(--sh-teal); animation: pulse 1.4s ease-in-out infinite; }
+.boot__logo { width: 76px; height: 76px; display: block; margin: 0 auto;
+  animation: pulse 1.4s ease-in-out infinite; }
 .boot__bar { width: 150px; height: 6px; border-radius: 99px; background: var(--teal-050); overflow: hidden; }
 .boot__bar span { display: block; height: 100%; width: 40%; border-radius: 99px; background: var(--teal);
   animation: slide 1.1s ease-in-out infinite; }

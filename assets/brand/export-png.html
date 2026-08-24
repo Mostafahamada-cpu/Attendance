@@ -1,0 +1,40 @@
+<!doctype html><meta charset="utf-8"><title>Export PNGs</title>
+<style>body{font:14px system-ui;padding:28px;color:#0B1B3A}button{font:600 14px system-ui;background:#2563EB;color:#fff;border:0;border-radius:8px;padding:10px 16px;cursor:pointer}</style>
+<h2>Attendance — PNG export</h2>
+<p>Open this file directly in a browser (double-click it), then click below. Your browser saves each PNG to Downloads.</p>
+<button onclick="run()">Export all sizes</button>
+<pre id="log"></pre>
+<script>
+const JOBS = [
+  ['app-icon.svg',        [1024, 512, 192, 180, 152, 120]],
+  ['app-icon-transparent.svg', [1024, 512, 256]],
+  ['logo-icon.svg',       [512, 256, 128, 64, 48, 32]],
+  ['logo-icon-mono-white.svg', [512, 256, 128, 64]],
+  ['favicon.svg',         [64, 48, 32, 16]],
+  ['logo-horizontal.svg', [1088, 544, 272]],
+  ['logo-horizontal-white.svg', [1088, 544, 272]]
+];
+async function png(src, w) {
+  const svg = await (await fetch(src)).text();
+  const el = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
+  const [, , vw, vh] = el.getAttribute('viewBox').split(/\s+/).map(Number);
+  const url = URL.createObjectURL(new Blob([svg], {type: 'image/svg+xml'}));
+  const img = new Image();
+  await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = url; });
+  const c = document.createElement('canvas');
+  c.width = w; c.height = Math.round(w * vh / vw);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  URL.revokeObjectURL(url);
+  const a = document.createElement('a');
+  a.download = src.replace('.svg', '') + '-' + w + '.png';
+  a.href = c.toDataURL('image/png');
+  a.click();
+  await new Promise(r => setTimeout(r, 160));
+}
+async function run() {
+  const log = document.getElementById('log');
+  for (const [src, sizes] of JOBS)
+    for (const w of sizes) { await png(src, w); log.textContent += src + ' @ ' + w + '\n'; }
+  log.textContent += 'done\n';
+}
+</script>

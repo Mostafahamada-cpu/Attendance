@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Attendance">
+  <title>Attendance</title>
+  <!-- clock dial -->
+  <circle cx="32" cy="32" r="23" fill="none" stroke="#2563EB" stroke-width="5"/>
+  <!-- hour ticks -->
+  <g stroke="#93C5FD" stroke-width="3" stroke-linecap="round">
+    <path d="M32 14.5V17.5"/>
+    <path d="M46.5 32H49.5"/>
+    <path d="M32 46.5V49.5"/>
+    <path d="M14.5 32H17.5"/>
+  </g>
+  <!-- check mark doubling as the clock hands -->
+  <path d="M24.5 26.5L32 32L43 19" fill="none" stroke="#2563EB" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

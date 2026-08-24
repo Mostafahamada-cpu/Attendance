@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 292 72" width="292" height="72" role="img" aria-label="Attendance">
+  <title>Attendance</title>
+  <g transform="translate(6 4)">
+    <circle cx="32" cy="32" r="22" fill="none" stroke="#BFDBFE" stroke-width="7"/>
+    <path d="M36.2 10.4A22 22 0 1 0 53.6 27.8" fill="none" stroke="#2563EB" stroke-width="7" stroke-linecap="round"/>
+    <path d="M19 31L26 38L48.5 15.5" fill="none" stroke="#2563EB" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="88" y="39" fill="#0B1B3A" font-family="Inter, 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="28" font-weight="700" letter-spacing="-0.6">Attendance</text>
+  <text x="89.5" y="55" fill="#64748B" font-family="Inter, 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="9.5" font-weight="600" letter-spacing="2.4">TIME &amp; ATTENDANCE TRACKING</text>
+</svg>

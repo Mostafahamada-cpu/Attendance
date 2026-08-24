@@ -91,7 +91,8 @@ function admShell(routeKey) {
   const content = el('div#route');
   const side = el('aside.sidebar');
   const brand = el('div.brand');
-  brand.innerHTML = `<div class="mk"></div><div><b>RingRoad</b><span>Attendance Admin</span></div>`;
+  brand.innerHTML = `<img class="mk" src="./assets/brand/logo-icon.svg" alt="" width="38" height="38">`
+    + `<div><b>RingRoad</b><span>Attendance Admin</span></div>`;
   side.append(brand);
   for (const item of ADM_NAV) {
     const a = el('a.side-link' + (routeKey === item.r ? '.on' : ''), { href: '#/' + item.r });

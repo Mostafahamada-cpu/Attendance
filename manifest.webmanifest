@@ -1,0 +1,25 @@
+{
+  "name": "RingRoad Attendance",
+  "short_name": "Attendance",
+  "description": "Clock in, clock out, and manage time off.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F6F8F9",
+  "theme_color": "#24AAA5",
+  "icons": [
+    {
+      "src": "./assets/brand/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/brand/favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
