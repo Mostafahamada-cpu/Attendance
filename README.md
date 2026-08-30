@@ -24,13 +24,14 @@ attendance-app/
 │   ├── schema-v3.sql       # ← manager role · two-stage leave approval (run after v2)
 │   ├── schema-v4.sql       # ← admin vacation-balance management (run after v3)
 │   ├── provision-users-v2.sql  # ← the seven new/updated users (run after v4)
+│   ├── fix-ayman-admin.sql     # ← makes Ayman Madbouly an active admin
 │   └── seed.sql            # role promotion + demo off-days (edit emails)
 └── js/
     ├── app.js              # session, routing, employee + admin shells
     ├── lib/                # supabase · data · ui · time · toast · geo · storage
     └── pages/
         ├── login.js
-        ├── shared/         # leave-review (used by the admin AND manager screens)
+        ├── shared/         # leave-review · security (Change Password, both shells)
         ├── employee/       # home · apply-leave · my-leaves · calendar · notifications ·
         │                   #   chat · more · weekend · rest-days · approvals (managers)
         └── admin/          # dashboard · leaves · employees · balances · offdays ·
@@ -145,6 +146,31 @@ updated in place with their **passwords untouched**. It never auto-creates an ad
 admin rows are promote-only, so a typo cannot mint an administrator. Its final two `SELECT`s
 report each person's access tier and flag any roster entry that matched no account.
 
+### b6. Make Ayman Madbouly an admin (REQUIRED)
+[`db/fix-ayman-admin.sql`](db/fix-ayman-admin.sql) guarantees
+`ayman.madbouly@ringroad.re` **exists, can log in, and is an admin**. It is small and
+self-contained, so it can be run on its own — `provision-users-v2.sql` already covers him,
+and this is the belt-and-braces version you can point at the problem directly.
+
+It creates the account only if it is genuinely missing (existing password untouched),
+confirms the email, clears `banned_until` / `deleted_at`, adds the `email` identity row that
+password sign-in needs, sets `ta_profiles.role = 'admin'`, and seeds his balances. It ends
+with a verification query whose columns must all read true:
+
+```sql
+select p.role, (u.email_confirmed_at is not null) as confirmed,
+       exists (select 1 from auth.identities i where i.user_id = u.id and i.provider='email') as can_login
+  from public.ta_profiles p join auth.users u on u.id = p.id
+ where lower(p.email) = 'ayman.madbouly@ringroad.re';
+```
+
+`role = 'admin'` is the whole story for permissions: `ta_is_admin()` reads that column, and
+every admin RLS policy and admin RPC — `ta_set_leave_balance` included — calls `ta_is_admin()`.
+The frontend route guard reads the same field. There is nothing else to flip.
+
+> It deliberately does **not** reset an existing password. If he still cannot sign in after
+> this, reset it in **Authentication → Users** or use *Forgot password?* on the login screen.
+
 ### c. Create users
 
 **Dashboard → Authentication → Users → Add user** (tick **Auto Confirm User**). Create at
@@ -192,6 +218,9 @@ balance auto-updates + notification** · employee drill-down (calendar stats, hi
 pattern) · team leave-balance table with search & smart filters · per-employee weekly off-day
 editor · analytics (today/week/month/custom → total & avg hours, attendance rate, late
 arrivals, absences, daily-hours chart).
+
+**Everyone (v5):** a **Security → Change Password** section in the settings screen, with
+current-password verification, per-field errors, and the session preserved afterwards.
 
 **Admin (v4):** **Vacation Balances** — the team table now lists *everyone* (admins take
 leave too) and every row has an **Edit balance** action; the same **Edit Vacation Balance**
@@ -401,11 +430,39 @@ its own**, which is why adding people cannot widen anyone's access.
 | `admin` | Admin shell: Dashboard, Leave Requests, Employees, **Vacation Balances (view + edit)**, Off-Days, Weekend Changes, Rest Days, Geofence, Analytics, My Account |
 | `employee` | Employee shell only: clock in/out, own attendance, own leave, **own balance (read-only)**, calendar, notifications, More |
 
-Everyone changes **their own** password and nobody else's — employees at *More → Change
-Password*, admins at *My Account → Change Password*. Both call the GoTrue `/user` endpoint as
-the signed-in user, so there is deliberately no "set this person's password" button anywhere in
-the admin UI. A forgotten password is reset from *Forgot password?* on the login screen, or by
-an owner in the Supabase dashboard.
+### Change Password (v5)
+Every authenticated user gets the same **Security** section in their settings screen —
+employees at *More*, admins at *My Account*. It is one component,
+[`js/pages/shared/security.js`](js/pages/shared/security.js), rendered by both shells, with
+three fields: **Current Password**, **New Password**, **Confirm New Password**.
+
+The order matters: the current password is **verified before anything changes**. GoTrue has no
+"check my password" endpoint, so `auth.verifyPassword()` asks for a token using that password
+and throws the result away — nothing is persisted, so a wrong guess cannot disturb the live
+session and a right one cannot leave the app holding two. Only once it comes back true does
+`auth.updatePassword()` run. A wrong current password therefore never reaches the update call
+at all.
+
+Each check has its own message, shown inline under the offending field *and* as a toast
+through the existing `toastOk` / `toastErr` system: empty current, new shorter than 6, new
+identical to current, confirmation mismatch, wrong current password. Anything GoTrue rejects
+(too weak, same as old, rate-limited) is passed through in its own words, which are more
+specific than anything the app could invent.
+
+After a successful change the app signs in again with the new password, so the user **stays
+logged in** on a fully valid session rather than being bounced at the next silent token
+refresh. The fields are cleared and a success toast confirms it.
+
+**Nobody can change anybody else's password.** `auth.changePassword(current, new)` takes no
+"whose account" argument — the email comes from the live session — so there is no parameter to
+tamper with, and no "set this person's password" control exists anywhere in the admin UI. An
+admin who needs to reset someone else's uses **Authentication → Users** in the Supabase
+dashboard, or the user uses *Forgot password?* on the login screen.
+
+**No password is ever stored by this app.** Supabase Auth holds the bcrypt hash in
+`auth.users.encrypted_password`; there is no password column on `ta_profiles` or any other
+`ta_*` table, no password is written to a log, echoed into the DOM, or put in a URL, and the
+fields are `type="password"` and cleared on success.
 
 ## 4. Security (defence in depth)
 
@@ -543,6 +600,26 @@ add your deployed URL to the redirect allow-list.
     **Change Password** → sets a new password → logs out → signs in with the new one.
 42. Apply for leave and approve it → `used_days` rises and Remaining falls, while **Total stays
     at whatever the admin set**.
+
+**v5 checklist — Ayman Madbouly + Change Password**
+
+43. Run `db/fix-ayman-admin.sql`. Its verification query returns one row with `role = admin`,
+    `email_confirmed_ok`, `can_password_login_ok` and `has_password_ok` all true, and
+    `balance_rows_expect_3` = 3.
+44. **Ayman Madbouly signs in** → lands on the **Admin Dashboard**, not the employee app.
+45. He opens **Vacation Balances**, edits somebody's allowance and saves → it persists.
+46. A **regular employee** signing in gets the employee shell; typing `#/admin` in the address
+    bar bounces them back to `#/home`, and `rpc/ta_set_leave_balance` refuses them.
+47. **Every user** — admin or employee — finds **Security → Change Password** in their
+    settings screen with all three fields.
+48. Wrong **current** password → *"Your current password is incorrect"*, and the network tab
+    shows **no** `PUT /auth/v1/user`: the password was never touched.
+49. Mismatched confirmation, a new password under 6 characters, and a new password identical
+    to the current one are each refused with their own message, before any request is sent.
+50. A valid change → success toast, fields cleared, and **you are still logged in**.
+51. **Log out and back in with the new password** → works. The old one is rejected.
+52. `select * from auth.users` → `encrypted_password` is a bcrypt hash; no plain-text password
+    exists in `auth.users` or in any `ta_*` table.
 ```
 
 **Verified already:** the app boots with zero console errors, all 20 modules load, the login

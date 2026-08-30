@@ -1,8 +1,7 @@
-import { auth } from '../../lib/supabase.js?v=20260830a';
-import { Balances } from '../../lib/data.js?v=20260830a';
-import { el, avatar } from '../../lib/ui.js?v=20260830a';
-import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260830a';
-import { LEAVE_TYPES } from './balances.js?v=20260830a';
+import { Balances } from '../../lib/data.js?v=20260830b';
+import { el, avatar } from '../../lib/ui.js?v=20260830b';
+import { LEAVE_TYPES } from './balances.js?v=20260830b';
+import { securityCard } from '../shared/security.js?v=20260830b';
 
 // Admin → My Account.
 // The admin shell has no bottom nav, so administrators previously had no route
@@ -51,37 +50,9 @@ export default async function adminAccount({ profile }) {
   }
 
   // ── Security ───────────────────────────────────────────────────────────────
-  const sec = el('div.card');
-  sec.append(el('div.card-sub.b', { style: { marginBottom: '12px' } }, 'Security'));
-  const row = el('div.row.between', { style: { gap: '12px' } });
-  row.append(el('div.grow',
-    el('div.small.b', 'Password'),
-    el('div.tiny.muted', 'Change the password you sign in with')));
-  const btn = el('button.btn.btn--primary.btn--sm', { style: { flex: 'none' } }, 'Change Password');
-  btn.addEventListener('click', changePassword);
-  row.append(btn);
-  sec.append(row);
-  screen.append(sec);
+  //  The very same component the employee settings screen uses.
+  screen.append(securityCard());
 
   return screen;
 }
 
-function changePassword() {
-  const p1 = el('input.input', { type: 'password', placeholder: 'New password (min 6)' });
-  const p2 = el('input.input', { type: 'password', placeholder: 'Confirm new password', style: { marginTop: '10px' } });
-  const body = el('div');
-  body.append(el('p.small.muted', { style: { marginBottom: '12px' } },
-    'You will stay signed in on this device. Use the new password next time you log in.'), p1, p2);
-  modal({
-    title: 'Change Password', body,
-    actions: [
-      { label: 'Cancel', cls: 'btn--pill-line' },
-      { label: 'Update', cls: 'btn--primary', onClick: async (close) => {
-        if (p1.value.length < 6) return toastErr('Password must be 6+ characters');
-        if (p1.value !== p2.value) return toastErr('Passwords don\'t match');
-        try { await auth.updatePassword(p1.value); close(); toastOk('Password updated'); }
-        catch (e) { toastErr(e.message); }
-      } },
-    ],
-  });
-}

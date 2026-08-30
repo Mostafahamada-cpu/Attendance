@@ -96,8 +96,34 @@ def build_pdf(rows):
           Spacer(1, 8),
           Paragraph("Log in with the email and password below. Admin accounts open the management "
                     "dashboard; all others open the employee app. Please change your password after "
-                    "first sign-in — employees at <b>More → Change Password</b>, administrators at "
-                    "<b>My Account → Change Password</b>.", body), Spacer(1, 10)]
+                    "first sign-in — every user has a <b>Security → Change Password</b> section in "
+                    "their settings screen (employees under <b>More</b>, administrators under "
+                    "<b>My Account</b>).", body), Spacer(1, 10)]
+
+    # ---- Change password --------------------------------------------------
+    el.append(Paragraph("Changing your password", H2))
+    el.append(Spacer(1, 5))
+    el.append(Paragraph(
+        "Open your settings screen and find the <b>Security</b> section. Enter your "
+        "<b>Current Password</b>, then your <b>New Password</b> twice, and press "
+        "<b>Change Password</b>.", body))
+    el.append(Spacer(1, 6))
+    for line in [
+        "Your current password is <b>checked first</b>. If it is wrong, nothing changes and the "
+        "form says so — the new password is never sent.",
+        "The new password must be at least 6 characters, must match the confirmation, and must "
+        "differ from your current one. Each problem is reported separately.",
+        "The change is saved in <b>Supabase Authentication</b>. You stay signed in on the device "
+        "you changed it on, and the new password works from the next sign-in onwards.",
+        "<b>You can only change your own password.</b> There is no screen anywhere in the app — "
+        "admin included — that sets somebody else's. If you are locked out, ask an "
+        "administrator to reset it from the Supabase dashboard, or use <b>Forgot password?</b> on "
+        "the login screen.",
+        "Passwords are stored only as a hash by Supabase Authentication. This document is the "
+        "only place a readable password appears — which is why it must be handled carefully.",
+    ]:
+        el.append(Paragraph("•&nbsp;&nbsp;" + line, bullet))
+    el.append(Spacer(1, 12))
 
     # ---- What's new: admin vacation balance management --------------------
     el.append(Paragraph("New — Admin Vacation Balance Management", H2))
@@ -185,6 +211,11 @@ def build_pdf(rows):
                         "Existing RingRoad logins keep their current password (unchanged); accounts marked as new "
                         "use the temporary password shown and should change it after first sign-in. "
                         "Keep this document confidential.", note))
+    el.append(Spacer(1, 6))
+    el.append(Spacer(1, 6))
+    el.append(Paragraph("<b>Ayman Madbouly</b> (<font face='Courier'>ayman.madbouly@ringroad.re</font>) and "
+                        "<b>Mohamed Ayman</b> are administrators: they sign in to the Admin Dashboard and can "
+                        "view and edit every employee's vacation balance.", note))
     el.append(Spacer(1, 6))
     el.append(Paragraph("<b>Mr. Sayed</b> is an administrator as well as the TeleSales team leader: he opens the "
                         "Admin Dashboard, can edit vacation balances, and changes his own password at "

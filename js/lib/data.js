@@ -1,6 +1,6 @@
 // Domain data access — all ta_* tables. Thin wrappers over supabase db.
-import { db, userId } from './supabase.js?v=20260830a';
-import { todayYMD, ymd } from './time.js?v=20260830a';
+import { db, userId } from './supabase.js?v=20260830b';
+import { todayYMD, ymd } from './time.js?v=20260830b';
 
 // ---- Profiles -------------------------------------------------------------
 export const Profiles = {

@@ -5,10 +5,11 @@
 --  the project — the other accounts from db/provision-users.sql keep their
 --  roles, departments and passwords exactly as they are.
 --
+--    Ayman Madbouly Admin      (created if missing, then promoted — REQUIRED)
 --    Mr Sayed      Admin       (promoted from employee; may change his password)
 --    Sherif        Engineer    (new)
 --    Omar Ayman    TeleSales   (new)
---    Mr Ayman      Admin       (already admin — confirmed, both Ayman accounts)
+--    Mr Ayman      Admin       (both Ayman accounts — created if missing)
 --    Eslam         Engineer    (existing — role confirmed)
 --    Peter         Office Boy  (new)
 --    Mostafa       Developer   (new)
@@ -46,10 +47,13 @@ set search_path = public, extensions;   -- pgcrypto (crypt/gen_salt) lives in ex
 
 -- ─────────────────────────────────────────────────────────────────────────────
 --  Roster — defined once, in a temp table.
---  `must_exist` marks the rows we will NOT create an auth account for: the two
---  Ayman accounts and Mr Sayed's two candidate addresses. We only ever promote
---  an Ayman/Sayed account that is already there, so a typo in this file can
---  never mint a brand-new administrator.
+--  `must_exist` marks the rows we will NOT create an auth account for — only
+--  Mr Sayed's two candidate addresses, because exactly one of them is real and
+--  creating both would leave a bogus account behind. Everyone else, including
+--  the two Ayman administrators, is created if missing: the requirement is that
+--  Ayman Madbouly EXISTS as an active admin, not merely that he is promoted if
+--  someone already made him. Their passwords are the ones already published in
+--  Attendance-Credentials.pdf, and an existing account keeps its own.
 -- ─────────────────────────────────────────────────────────────────────────────
 drop table if exists _att_roster2;
 create temporary table _att_roster2 (
@@ -57,11 +61,11 @@ create temporary table _att_roster2 (
   app_role text, department text, position text, must_exist boolean default false
 );
 insert into _att_roster2 (email, full_name, temp_password, app_role, department, position, must_exist) values
-  -- Admins — never auto-created, only confirmed/promoted.
+  -- Admins. The Sayed rows are promote-only (see must_exist above).
   ('sayed@ringroad.re',          'Mr Sayed',       null,             'admin',    'TeleSales',   'Team Leader',     true),
   ('mr.sayed@ringroad.re',       'Mr Sayed',       null,             'admin',    'TeleSales',   'Team Leader',     true),
-  ('mohamed.ayman@ringroad.re',  'Mohamed Ayman',  null,             'admin',    'Management',  'Administrator',   true),
-  ('ayman.madbouly@ringroad.re', 'Ayman Madbouly', null,             'admin',    'Management',  'Management',      true),
+  ('mohamed.ayman@ringroad.re',  'Mohamed Ayman',  '%P_d4Q9#tdRs7W4','admin',    'Management',  'Administrator',   false),
+  ('ayman.madbouly@ringroad.re', 'Ayman Madbouly', 'L9@+_34Qf_y$y',  'admin',    'Management',  'Management',      false),
   -- Employees — created if missing.
   ('sherif@ringroad.re',         'Sherif',         'Sable&888&HP',   'employee', 'Engineering', 'Engineer',        false),
   ('omar.ayman@ringroad.re',     'Omar Ayman',     'Maple#485%SF',   'employee', 'TeleSales',   'TeleSales Agent', false),
@@ -101,6 +105,29 @@ select u.id::text, u.id,
 from auth.users u
 join _att_roster2 r on lower(r.email) = lower(u.email)
 where not exists (select 1 from auth.identities i where i.user_id = u.id and i.provider = 'email');
+
+-- ─────────────────────────────────────────────────────────────────────────────
+--  2b. Make sure every roster account is ACTIVE.
+--      A confirmed-but-banned or never-confirmed account fails login with a
+--      message that looks nothing like a permissions problem, so rule it out.
+--      banned_until / deleted_at exist only on newer GoTrue versions.
+-- ─────────────────────────────────────────────────────────────────────────────
+update auth.users u
+   set email_confirmed_at = coalesce(u.email_confirmed_at, now()), updated_at = now()
+  from _att_roster2 r
+ where lower(u.email) = lower(r.email) and u.email_confirmed_at is null;
+
+do $$ begin
+  update auth.users u set banned_until = null
+    from _att_roster2 r
+   where lower(u.email) = lower(r.email) and u.banned_until is not null;
+exception when undefined_column then raise notice 'auth.users.banned_until not present — skipped.'; end $$;
+
+do $$ begin
+  update auth.users u set deleted_at = null
+    from _att_roster2 r
+   where lower(u.email) = lower(r.email) and u.deleted_at is not null;
+exception when undefined_column then raise notice 'auth.users.deleted_at not present — skipped.'; end $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 --  3. Upsert ta_profiles — the step that actually sets the role.
@@ -176,22 +203,32 @@ order by (p.role = 'admin') desc, p.department, p.full_name;
 
 --  Roster entries that matched NO account. Expect at most ONE row here: the
 --  unused half of Mr Sayed's two addresses. Anything else listed means that
---  person still has no login.
+--  person still has no login. Ayman Madbouly must NOT appear here.
 select r.full_name, r.email,
-       case when r.must_exist then 'NOT CREATED — no such account (expected for the unused Sayed address)'
+       case when r.must_exist then 'NOT CREATED — no such account (expected for ONE of the two Sayed addresses)'
             else 'MISSING — re-run, or add the account in Authentication → Users' end as status
 from _att_roster2 r
 where not exists (select 1 from auth.users u where lower(u.email) = lower(r.email));
+
+--  Every admin on the project. Ayman Madbouly MUST appear in this list.
+select full_name, email, role, department, position
+from public.ta_profiles
+where role = 'admin'
+order by full_name;
 
 drop table if exists _att_roster2;
 
 -- ============================================================================
 --  AFTER RUNNING
---   • Mr Sayed signs in and lands on the Admin Dashboard. He changes his own
---     password at Admin → My Account → Change Password (added in this release);
---     employees do the same at More → Change Password. Both call the GoTrue
---     /user endpoint as the signed-in user — an admin cannot set anybody
---     else's password from the app, which is intentional.
+--   • EVERY user changes their own password in the app's Security section —
+--     admins at My Account, employees at More. It asks for the current password
+--     first and updates through Supabase Auth. There is no "set this person's
+--     password" control anywhere, by design: the endpoint acts on the session's
+--     own account, so nobody can change somebody else's from Settings.
+--   • Ayman Madbouly is an active admin (expect one row, role = admin):
+--       select p.full_name, p.role, (u.email_confirmed_at is not null) as confirmed
+--         from public.ta_profiles p join auth.users u on u.id = p.id
+--        where lower(p.email) = 'ayman.madbouly@ringroad.re';
 --   • Verify nobody was duplicated (expect 0 rows):
 --       select lower(email), count(*) from public.ta_profiles
 --        group by 1 having count(*) > 1;

@@ -1,4 +1,4 @@
-import { el, icon, pageHead, emptyState } from '../../lib/ui.js?v=20260830a';
+import { el, icon, pageHead, emptyState } from '../../lib/ui.js?v=20260830b';
 
 export default async function chatPage({ navigate }) {
   const screen = el('div.screen.fade-up');

@@ -1,7 +1,7 @@
-import { OffDays, Weekend } from '../../lib/data.js?v=20260830a';
-import { el, icon, pageHead, emptyState, pill } from '../../lib/ui.js?v=20260830a';
-import { toastOk, toastErr, confirmDialog } from '../../lib/toast.js?v=20260830a';
-import { DOW, DOW_FULL, ago, fmtShortDate } from '../../lib/time.js?v=20260830a';
+import { OffDays, Weekend } from '../../lib/data.js?v=20260830b';
+import { el, icon, pageHead, emptyState, pill } from '../../lib/ui.js?v=20260830b';
+import { toastOk, toastErr, confirmDialog } from '../../lib/toast.js?v=20260830b';
+import { DOW, DOW_FULL, ago, fmtShortDate } from '../../lib/time.js?v=20260830b';
 
 // Employee view: change your weekend (weekly off-days).
 //   • Change 1 — approved automatically, effective immediately.

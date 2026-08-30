@@ -1,7 +1,7 @@
-import { Profiles, OffDays } from '../../lib/data.js?v=20260830a';
-import { el, icon, avatar, emptyState } from '../../lib/ui.js?v=20260830a';
-import { toastOk, toastErr } from '../../lib/toast.js?v=20260830a';
-import { DOW_FULL, DOW } from '../../lib/time.js?v=20260830a';
+import { Profiles, OffDays } from '../../lib/data.js?v=20260830b';
+import { el, icon, avatar, emptyState } from '../../lib/ui.js?v=20260830b';
+import { toastOk, toastErr } from '../../lib/toast.js?v=20260830b';
+import { DOW_FULL, DOW } from '../../lib/time.js?v=20260830b';
 
 export default async function adminOffdays() {
   const people = (await Profiles.all()).filter(p => p.role === 'employee');

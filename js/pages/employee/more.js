@@ -1,7 +1,8 @@
-import { auth } from '../../lib/supabase.js?v=20260830a';
-import { Notifs } from '../../lib/data.js?v=20260830a';
-import { el, icon, avatar, pageHead } from '../../lib/ui.js?v=20260830a';
-import { toastOk, toastErr, modal, confirmDialog } from '../../lib/toast.js?v=20260830a';
+import { auth } from '../../lib/supabase.js?v=20260830b';
+import { Notifs } from '../../lib/data.js?v=20260830b';
+import { el, icon, avatar, pageHead } from '../../lib/ui.js?v=20260830b';
+import { modal, confirmDialog } from '../../lib/toast.js?v=20260830b';
+import { securityCard } from '../shared/security.js?v=20260830b';
 
 export default async function morePage({ profile, navigate }) {
   const unread = (await Notifs.unread().catch(() => [])).length;
@@ -11,8 +12,10 @@ export default async function morePage({ profile, navigate }) {
   // Profile header card
   const pcard = el('div.card.row', { style: { gap: '16px' } });
   pcard.append(avatar(profile, 'lg'));
-  const info = el('div.grow');
-  info.append(
+  // Built through el() rather than info.append(...): the DOM's own append()
+  // stringifies a null child into the text "null", which is what the trailing
+  // is_manager branch used to print on every non-manager's profile card.
+  const info = el('div.grow',
     el('div', { style: { fontSize: '18px', fontWeight: '800' } }, profile.full_name),
     el('div.small.muted', profile.email || ''),
     el('div.pill.pill--present', { style: { marginTop: '8px' } }, `${profile.position || 'Employee'} · ${profile.department || 'General'}`),
@@ -40,9 +43,13 @@ export default async function morePage({ profile, navigate }) {
   menu2.append(
     toggleItem('bell', 'Notification Settings', 'notif_push'),
     toggleItem('reminder', 'Clock-in Reminder', 'reminder'),
-    item('lock', 'Change Password', changePassword),
   );
   screen.append(menu2);
+
+  // Security — the shared Change Password section. Same component, same rules
+  // as the admin My Account screen, so every user changes their own password
+  // (and only their own) the same way.
+  screen.append(el('div', { style: { marginTop: '16px' } }, securityCard()));
 
   const menu3 = el('div.menu', { style: { marginTop: '16px' } });
   menu3.append(
@@ -104,24 +111,6 @@ function showProfile(p) {
     body.append(r);
   });
   modal({ title: 'My Profile', body, actions: [{ label: 'Close', cls: 'btn--pill-line' }] });
-}
-
-function changePassword() {
-  const p1 = el('input.input', { type: 'password', placeholder: 'New password (min 6)' });
-  const p2 = el('input.input', { type: 'password', placeholder: 'Confirm new password', style: { marginTop: '10px' } });
-  const body = el('div'); body.append(p1, p2);
-  modal({
-    title: 'Change Password', body,
-    actions: [
-      { label: 'Cancel', cls: 'btn--pill-line' },
-      { label: 'Update', cls: 'btn--primary', onClick: async (close) => {
-        if (p1.value.length < 6) return toastErr('Password must be 6+ characters');
-        if (p1.value !== p2.value) return toastErr('Passwords don\'t match');
-        try { await auth.updatePassword(p1.value); close(); toastOk('Password updated'); }
-        catch (e) { toastErr(e.message); }
-      } },
-    ],
-  });
 }
 
 function infoModal(title, text) {

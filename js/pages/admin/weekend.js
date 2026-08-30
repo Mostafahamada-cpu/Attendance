@@ -1,7 +1,7 @@
-import { Profiles, Weekend } from '../../lib/data.js?v=20260830a';
-import { el, icon, avatar, emptyState } from '../../lib/ui.js?v=20260830a';
-import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260830a';
-import { ago, DOW_FULL, DOW } from '../../lib/time.js?v=20260830a';
+import { Profiles, Weekend } from '../../lib/data.js?v=20260830b';
+import { el, icon, avatar, emptyState } from '../../lib/ui.js?v=20260830b';
+import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260830b';
+import { ago, DOW_FULL, DOW } from '../../lib/time.js?v=20260830b';
 
 // Admin view: weekend-change usage per employee + approve/reject the second
 // (approval-requiring) change. The first change never lands here — it is

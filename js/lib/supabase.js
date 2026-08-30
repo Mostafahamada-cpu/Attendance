@@ -1,6 +1,6 @@
 // Minimal Supabase client over fetch(): GoTrue auth + PostgREST + RPC.
 // Isolated session key so it never collides with the main platform app.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SESSION_KEY } from '../../config.js?v=20260830a';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SESSION_KEY } from '../../config.js?v=20260830b';
 
 const AUTH = SUPABASE_URL + '/auth/v1';
 const REST = SUPABASE_URL + '/rest/v1';
@@ -51,8 +51,55 @@ export const auth = {
   async updatePassword(password) {
     const res = await fetch(AUTH + '/user', { method: 'PUT', headers: headers(), body: JSON.stringify({ password }) });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.msg || d.message || 'update failed');
+    if (!res.ok) throw new Error(d.error_description || d.msg || d.message || 'update failed');
     return d;
+  },
+
+  // Is `password` the CURRENT password of the signed-in user?
+  //
+  // GoTrue has no "check my password" endpoint, so we ask it for a token using
+  // that password and throw the answer away. Deliberately NOT persisted: a
+  // wrong guess must not disturb the live session, and a correct one must not
+  // leave the app holding a second one. Returns true/false for a credential
+  // verdict and rethrows anything else (offline, rate-limited, 500) so those
+  // are never mistaken for "wrong password".
+  async verifyPassword(password) {
+    const email = session?.user?.email;
+    if (!email) throw new Error('You are not signed in.');
+    try {
+      await authPost('/token?grant_type=password', { email, password });
+      return true;
+    } catch (e) {
+      if (/invalid login|invalid grant|invalid_grant|credentials/i.test(e.message || '')) return false;
+      throw e;
+    }
+  },
+
+  // Change the signed-in user's own password.
+  //
+  // There is no "whose password" parameter and there never should be: the email
+  // comes from the live session, so this cannot be pointed at another account.
+  // Supabase Auth stores the hash; the app never sees, keeps or logs either
+  // password, and no password is written to any table.
+  async changePassword(currentPassword, newPassword) {
+    const email = session?.user?.email;
+    if (!email) throw new Error('You are not signed in.');
+
+    if (!(await auth.verifyPassword(currentPassword))) {
+      const e = new Error('Your current password is incorrect.');
+      e.code = 'BAD_CURRENT';
+      throw e;
+    }
+
+    await auth.updatePassword(newPassword);
+
+    // Changing a password can invalidate the refresh token that was issued
+    // before it. Sign in again with the NEW one so the user stays logged in on
+    // a fully valid session instead of being bounced at the next silent
+    // refresh. A failure here does not undo the change, which has already
+    // happened — so it must not be reported as one.
+    try { await auth.signIn(email, newPassword); } catch (_) {}
+    return true;
   },
   async signOut() {
     try { await fetch(AUTH + '/logout', { method: 'POST', headers: headers(false) }); } catch (_) {}

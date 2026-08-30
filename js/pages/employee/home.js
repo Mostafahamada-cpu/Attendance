@@ -1,11 +1,11 @@
-import { Attendance, Balances, Settings } from '../../lib/data.js?v=20260830a';
-import { el, icon, avatar, ring } from '../../lib/ui.js?v=20260830a';
-import { toastOk, toastErr, confirmDialog, modal } from '../../lib/toast.js?v=20260830a';
-import { fmtTime, fmtHM, fmtLongDate, minToHM, minToDur } from '../../lib/time.js?v=20260830a';
+import { Attendance, Balances, Settings } from '../../lib/data.js?v=20260830b';
+import { el, icon, avatar, ring } from '../../lib/ui.js?v=20260830b';
+import { toastOk, toastErr, confirmDialog, modal } from '../../lib/toast.js?v=20260830b';
+import { fmtTime, fmtHM, fmtLongDate, minToHM, minToDur } from '../../lib/time.js?v=20260830b';
 import {
   getPositionWithFallback, evaluate, fmtDistance, permissionState,
   isSupported, isSecureOrigin, GeoError, DEFAULT_GEOFENCE,
-} from '../../lib/geo.js?v=20260830a';
+} from '../../lib/geo.js?v=20260830b';
 
 export default async function empHome({ profile, navigate, refresh }) {
   const [today, balances, cfg] = await Promise.all([
