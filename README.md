@@ -25,6 +25,7 @@ attendance-app/
 │   ├── schema-v4.sql       # ← admin vacation-balance management (run after v3)
 │   ├── provision-users-v2.sql  # ← the seven new/updated users (run after v4)
 │   ├── fix-ayman-admin.sql     # ← makes Ayman Madbouly an active admin
+│   ├── fix-admin-roles.sql     # ← EXACTLY two admins (run last, authoritative)
 │   └── seed.sql            # role promotion + demo off-days (edit emails)
 └── js/
     ├── app.js              # session, routing, employee + admin shells
@@ -140,7 +141,8 @@ makes **Admin → Vacation Balances** editable:
 
 ### b5. Provision the seven new/updated users (optional)
 [`db/provision-users-v2.sql`](db/provision-users-v2.sql) adds Sherif, Omar Ayman, Peter and
-Mostafa, promotes **Mr Sayed** to admin, and confirms the two Ayman admin accounts. It is
+Mostafa, sets **Mr Sayed** back to *employee · TeleSales · Team Leader*, and creates/confirms
+the two Ayman **admin** accounts. It is
 idempotent and creates **no duplicates**: accounts are matched by email and existing ones are
 updated in place with their **passwords untouched**. It never auto-creates an admin — the
 admin rows are promote-only, so a typo cannot mint an administrator. Its final two `SELECT`s
@@ -170,6 +172,36 @@ The frontend route guard reads the same field. There is nothing else to flip.
 
 > It deliberately does **not** reset an existing password. If he still cannot sign in after
 > this, reset it in **Authentication → Users** or use *Forgot password?* on the login screen.
+
+### b7. Enforce exactly two admins (REQUIRED — run this last)
+[`db/fix-admin-roles.sql`](db/fix-admin-roles.sql) is the **authoritative** script for who
+administers the system. There are **exactly two administrators and no others**:
+
+| | |
+| --- | --- |
+| Ayman Madbouly | `ayman.madbouly@ringroad.re` |
+| Mohamed Ayman | `mohamed.ayman@ringroad.re` |
+
+It syncs `ta_profiles.email` from `auth.users`, makes sure both accounts exist and can log in,
+grants them `admin` — and then **demotes every other admin to `employee`**. Mr Sayed in
+particular is restored to the record his original provisioning data gives him
+(*employee · TeleSales · Team Leader*, per `provision-users.sql` and `fix-shared-profiles.sql`).
+No account is created for him and none is deleted; only the `role` column moves.
+
+Changing who administers the system means editing the two-row allow-list at the top of that
+file and re-running it. It is idempotent — a second run reports no changes.
+
+It ends with six verification blocks, including the exact query from the requirement:
+
+```sql
+select full_name, email, role from public.ta_profiles where role = 'admin';
+-- must return ONLY Ayman Madbouly and Mohamed Ayman
+```
+
+plus a PASS/FAIL count, per-admin boolean assertions, a Mr-Sayed-specific check, the final
+roles of everyone provisioned, and a `raise warning` you cannot miss in the output pane if the
+count is ever anything but two. (A *warning*, not an exception — raising would roll back the
+fix the script had just applied.)
 
 ### c. Create users
 
@@ -425,10 +457,23 @@ select a.created_at, e.full_name as employee, a.leave_type,
 TeleSales Agent, Team Leader — lives in `ta_profiles.position` and **carries no permissions of
 its own**, which is why adding people cannot widen anyone's access.
 
-| Tier | Reaches |
-| --- | --- |
-| `admin` | Admin shell: Dashboard, Leave Requests, Employees, **Vacation Balances (view + edit)**, Off-Days, Weekend Changes, Rest Days, Geofence, Analytics, My Account |
-| `employee` | Employee shell only: clock in/out, own attendance, own leave, **own balance (read-only)**, calendar, notifications, More |
+| Tier | Who | Reaches |
+| --- | --- | --- |
+| `admin` | **Ayman Madbouly** and **Mohamed Ayman** — and nobody else | Admin shell: Dashboard, Leave Requests, Employees, **Vacation Balances (view + edit)**, Off-Days, Weekend Changes, Rest Days, Geofence, Analytics, My Account |
+| `employee` | Everyone else, whatever their job title | Employee shell only: clock in/out, own attendance, own leave, **own balance (read-only)**, calendar, notifications, More |
+
+**There are exactly two administrators.** Mr Sayed is *employee · TeleSales · Team Leader* —
+Team Leader is a job title with no permissions attached, the same as Engineer or Office Boy.
+[`db/fix-admin-roles.sql`](db/fix-admin-roles.sql) enforces the two-admin rule and proves it.
+
+`ta_profiles.role` is the single source of truth for this, in both directions:
+`ta_is_admin()` is `select role = 'admin' from ta_profiles where id = auth.uid()`, every admin
+RLS policy and admin RPC calls it, and the frontend guard in
+[`js/app.js`](js/app.js) reads `state.profile.role` off the very same row it loads at boot. So
+the database and the UI cannot disagree about who is an admin, and demoting someone in SQL
+demotes them everywhere. A demoted user who is signed in at that moment keeps the admin
+*screens* until they reload — but every admin write they attempt is refused, because
+`ta_is_admin()` is evaluated per request, not per session.
 
 ### Change Password (v5)
 Every authenticated user gets the same **Security** section in their settings screen —
@@ -596,8 +641,9 @@ add your deployed URL to the redirect allow-list.
 39. **Employees → a person → Edit Vacation Balance** opens the same dialog and saves the same way.
 40. `select * from ta_balance_adjustments order by created_at desc` → one row per change, with
     the before/after totals, the admin who made it and the reason.
-41. **Mr Sayed** logs in → lands on the **Admin Dashboard** → sidebar footer → **My Account** →
-    **Change Password** → sets a new password → logs out → signs in with the new one.
+41. **Mr Sayed** logs in → lands on the **employee** app, not the Admin Dashboard. Typing
+    `#/admin` bounces him back to `#/home`, and `rpc/ta_set_leave_balance` refuses him. He
+    changes his own password from **More → Security**, like every other employee.
 42. Apply for leave and approve it → `used_days` rises and Remaining falls, while **Total stays
     at whatever the admin set**.
 
@@ -620,6 +666,27 @@ add your deployed URL to the redirect allow-list.
 51. **Log out and back in with the new password** → works. The old one is rejected.
 52. `select * from auth.users` → `encrypted_password` is a bcrypt hash; no plain-text password
     exists in `auth.users` or in any `ta_*` table.
+
+**v6 checklist — exactly two admins**
+
+53. Run `db/fix-admin-roles.sql`. Its `DEMOTED to employee` block lists anyone who lost the
+    role; on a second run that block is empty.
+54. The requirement's own query returns **exactly two rows** — Ayman Madbouly and Mohamed
+    Ayman:
+    ```sql
+    select full_name, email, role from public.ta_profiles where role = 'admin';
+    ```
+55. The PASS/FAIL block reads **PASS**, and `ayman_madbouly_is_admin`, `mohamed_ayman_is_admin`,
+    `no_other_admins` and `exactly_two` are all **true**.
+56. **Mr Sayed** reads `employee · TeleSales · Team Leader` on both candidate addresses, and no
+    third Sayed account was created.
+57. **Both admins** sign in → Admin Dashboard → **Vacation Balances** → edit and save a
+    balance → it persists.
+58. **Any other user** (Sherif, Peter, Mostafa, Mr Sayed) signs in → employee app only;
+    `#/admin` redirects to `#/home`; `rpc/ta_set_leave_balance` returns *"Only an admin can
+    change a vacation balance"*.
+59. **Password change still works for everyone**, admin and employee alike — this migration
+    touches only the `role` column.
 ```
 
 **Verified already:** the app boots with zero console errors, all 20 modules load, the login

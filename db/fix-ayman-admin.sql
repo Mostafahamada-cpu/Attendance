@@ -4,6 +4,13 @@
 --  Run this in the Supabase SQL Editor. It is small, self-contained and
 --  idempotent, so it can be run on its own and re-run safely.
 --
+--  SCOPE: this file only ever GRANTS admin to Ayman Madbouly. It does not take
+--  the role away from anyone. The rule that there are EXACTLY TWO admins —
+--  Ayman Madbouly and Mohamed Ayman, nobody else — is enforced by
+--  db/fix-admin-roles.sql, which is the authoritative script and the last one
+--  to run. If you only run one file, run that one: it does everything this one
+--  does, for both admins, and demotes everybody else.
+--
 --    Email : ayman.madbouly@ringroad.re
 --    Role  : admin
 --

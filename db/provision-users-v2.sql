@@ -5,14 +5,19 @@
 --  the project — the other accounts from db/provision-users.sql keep their
 --  roles, departments and passwords exactly as they are.
 --
---    Ayman Madbouly Admin      (created if missing, then promoted — REQUIRED)
---    Mr Sayed      Admin       (promoted from employee; may change his password)
---    Sherif        Engineer    (new)
---    Omar Ayman    TeleSales   (new)
---    Mr Ayman      Admin       (both Ayman accounts — created if missing)
---    Eslam         Engineer    (existing — role confirmed)
---    Peter         Office Boy  (new)
---    Mostafa       Developer   (new)
+--    Ayman Madbouly  admin       (created if missing — one of only TWO admins)
+--    Mohamed Ayman   admin       (created if missing — the other admin)
+--    Mr Sayed        employee    TeleSales · Team Leader  — NOT an admin
+--    Sherif          employee    Engineering · Engineer   (new)
+--    Omar Ayman      employee    TeleSales · Agent        (new)
+--    Eslam           employee    Engineering · Engineer   (existing)
+--    Peter           employee    Operations · Office Boy  (new)
+--    Mostafa         employee    IT · Developer           (new)
+--
+--  THERE ARE EXACTLY TWO ADMINS: Ayman Madbouly and Mohamed Ayman. Nobody else
+--  gets role = 'admin'. db/fix-admin-roles.sql is the authoritative enforcer of
+--  that rule — run it after this file, and it will demote anyone who slipped
+--  through.
 --
 --  SAFE & IDEMPOTENT — re-runnable:
 --    * NO DUPLICATES. Accounts are matched by email; an existing account is
@@ -31,14 +36,13 @@
 --    lives in ta_profiles.position and carries no privileges of its own — which
 --    is exactly why adding these people cannot widen anyone's access.
 --
---  MR SAYED — TWO ADDRESSES
+--  MR SAYED — TWO ADDRESSES, NEITHER OF THEM AN ADMIN
 --    The repo disagrees with itself about his email: provision-users.sql and
 --    fix-shared-profiles.sql say 'mr.sayed@ringroad.re', while the credentials
---    CSV/PDF say 'sayed@ringroad.re'. This script promotes WHICHEVER OF THE TWO
---    ACTUALLY EXISTS (both, if both do) and reports what it found, so he can
---    sign in as an admin regardless of which account is the live one. If the
---    report shows two rows for him, demote the spare:
---      update public.ta_profiles set role = 'employee' where email = '<the unused one>';
+--    CSV/PDF say 'sayed@ringroad.re'. Both are listed so that whichever one is
+--    real ends up with the correct record — employee / TeleSales / Team Leader,
+--    exactly as his original provisioning data has it. Neither is created and
+--    neither is promoted. Team Leader is a job title, not a permission.
 --
 --  PREREQUISITES: db/schema.sql, schema-v2.sql, schema-v3.sql, schema-v4.sql.
 -- ============================================================================
@@ -54,6 +58,8 @@ set search_path = public, extensions;   -- pgcrypto (crypt/gen_salt) lives in ex
 --  Ayman Madbouly EXISTS as an active admin, not merely that he is promoted if
 --  someone already made him. Their passwords are the ones already published in
 --  Attendance-Credentials.pdf, and an existing account keeps its own.
+--
+--  `app_role` is the access tier and is 'admin' on exactly two rows.
 -- ─────────────────────────────────────────────────────────────────────────────
 drop table if exists _att_roster2;
 create temporary table _att_roster2 (
@@ -61,12 +67,15 @@ create temporary table _att_roster2 (
   app_role text, department text, position text, must_exist boolean default false
 );
 insert into _att_roster2 (email, full_name, temp_password, app_role, department, position, must_exist) values
-  -- Admins. The Sayed rows are promote-only (see must_exist above).
-  ('sayed@ringroad.re',          'Mr Sayed',       null,             'admin',    'TeleSales',   'Team Leader',     true),
-  ('mr.sayed@ringroad.re',       'Mr Sayed',       null,             'admin',    'TeleSales',   'Team Leader',     true),
-  ('mohamed.ayman@ringroad.re',  'Mohamed Ayman',  '%P_d4Q9#tdRs7W4','admin',    'Management',  'Administrator',   false),
+  -- ── The ONLY two admins in the system. Created if missing. ──────────────
   ('ayman.madbouly@ringroad.re', 'Ayman Madbouly', 'L9@+_34Qf_y$y',  'admin',    'Management',  'Management',      false),
-  -- Employees — created if missing.
+  ('mohamed.ayman@ringroad.re',  'Mohamed Ayman',  '%P_d4Q9#tdRs7W4','admin',    'Management',  'Administrator',   false),
+  -- ── Mr Sayed: NOT an admin. Both candidate addresses are listed so that
+  --    whichever one is real gets the right title; neither is created and
+  --    neither is promoted. "Team Leader" is a job title, not a permission. ──
+  ('sayed@ringroad.re',          'Mr Sayed',       null,             'employee', 'TeleSales',   'Team Leader',     true),
+  ('mr.sayed@ringroad.re',       'Mr Sayed',       null,             'employee', 'TeleSales',   'Team Leader',     true),
+  -- ── Employees — created if missing. ─────────────────────────────────────
   ('sherif@ringroad.re',         'Sherif',         'Sable&888&HP',   'employee', 'Engineering', 'Engineer',        false),
   ('omar.ayman@ringroad.re',     'Omar Ayman',     'Maple#485%SF',   'employee', 'TeleSales',   'TeleSales Agent', false),
   ('eslam@ringroad.re',          'Eslam',          'Zephyr&416%AQ',  'employee', 'Engineering', 'Engineer',        false),
@@ -210,8 +219,11 @@ select r.full_name, r.email,
 from _att_roster2 r
 where not exists (select 1 from auth.users u where lower(u.email) = lower(r.email));
 
---  Every admin on the project. Ayman Madbouly MUST appear in this list.
-select full_name, email, role, department, position
+--  Every admin on the project. This MUST list exactly two people —
+--  Ayman Madbouly and Mohamed Ayman. If anyone else appears, run
+--  db/fix-admin-roles.sql, which demotes them.
+select full_name, email, role, department, position,
+       (select count(*) from public.ta_profiles where role = 'admin') as admin_count_must_be_2
 from public.ta_profiles
 where role = 'admin'
 order by full_name;
@@ -229,6 +241,9 @@ drop table if exists _att_roster2;
 --       select p.full_name, p.role, (u.email_confirmed_at is not null) as confirmed
 --         from public.ta_profiles p join auth.users u on u.id = p.id
 --        where lower(p.email) = 'ayman.madbouly@ringroad.re';
+--   • EXACTLY TWO ADMINS — Ayman Madbouly and Mohamed Ayman, nobody else:
+--       select full_name, email, role from public.ta_profiles where role = 'admin';
+--     Then run db/fix-admin-roles.sql, which enforces this and proves it.
 --   • Verify nobody was duplicated (expect 0 rows):
 --       select lower(email), count(*) from public.ta_profiles
 --        group by 1 having count(*) > 1;

@@ -28,6 +28,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CSV_IN = os.path.join(HERE, "credentials-input.csv")
 PDF_OUT = os.path.normpath(os.path.join(HERE, "..", "..", "Attendance-Credentials.pdf"))
 
+# The ONLY two administrators in the Attendance system.
+ADMIN_EMAILS = {"ayman.madbouly@ringroad.re", "mohamed.ayman@ringroad.re"}
+
 SYM = "!@#$%&*"
 WORDS = ["Falcon","Cedar","Harbor","Cobalt","Summit","Delta","Orbit","Quartz","Maple",
          "Nimbus","Vertex","Zephyr","Lumen","Onyx","Pilot","Raven","Terra","Sable"]
@@ -154,14 +157,16 @@ def build_pdf(rows):
     # ---- Roles legend -----------------------------------------------------
     el.append(Paragraph("Roles &amp; access", H2))
     el.append(Spacer(1, 5))
-    roles = [[Paragraph("Access tier", hdr), Paragraph("Roles in this list", hdr), Paragraph("What they can reach", hdr)],
+    roles = [[Paragraph("Access tier", hdr), Paragraph("Who", hdr), Paragraph("What they can reach", hdr)],
              [Paragraph("Admin", cellb),
-              Paragraph("Admin, Management", cell),
+              Paragraph("<b>Ayman Madbouly</b> and <b>Mohamed Ayman</b> — and nobody else. "
+                        "There are exactly two administrators.", cell),
               Paragraph("Admin Dashboard, Employees, <b>Vacation Balances (view + edit)</b>, Leave Requests, "
                         "Off-Days, Weekend Changes, Rest Days, Geofence, Analytics, and My Account "
                         "(own password).", cell)],
              [Paragraph("Employee", cellb),
-              Paragraph("TeleSales, Engineer, Office Boy, Developer, Team Leader", cell),
+              Paragraph("Everyone else, whatever their job title — TeleSales, Engineer, "
+                        "Office Boy, Developer, Team Leader.", cell),
               Paragraph("Employee app only: clock in/out, own attendance and calendar, apply for leave, "
                         "own leave history, own vacation balance (<b>read-only</b>), notifications, and "
                         "More → Change Password.", cell)]]
@@ -174,9 +179,10 @@ def build_pdf(rows):
         ('BOX', (0, 0), (-1, -1), 0.6, TEAL), ('LINEBELOW', (0, 0), (-1, -1), 0.4, colors.HexColor("#E1E9E9"))]))
     el.append(rt)
     el.append(Spacer(1, 6))
-    el.append(Paragraph("A job title (Engineer, Office Boy, Developer, TeleSales) is a label only — it "
-                        "carries no permissions of its own. Access is decided solely by the access tier, "
-                        "so the tier column below is the one that matters.", note))
+    el.append(Paragraph("A job title (Engineer, Office Boy, Developer, TeleSales, <b>Team Leader</b>) is a "
+                        "label only — it carries no permissions of its own. Access is decided solely by the "
+                        "access tier, and only the two accounts named above hold the Admin tier. Rows marked "
+                        "<b>ADMIN</b> in the table below are those two.", note))
     el.append(Spacer(1, 14))
 
     el.append(Paragraph("System users", H2))
@@ -186,8 +192,11 @@ def build_pdf(rows):
              Paragraph("Email",hdr),Paragraph("Password",hdr)]]
     admin_idx = []
     for i, r in enumerate(rows, 1):
-        rl = r["role"].strip().lower()
-        is_admin = ("admin" in rl) or ("management" in rl)
+        # The two administrators are identified BY EMAIL, not by their role
+        # label. There are exactly two admins in the system and a job title —
+        # "Team Leader", "Management" — grants nothing on its own, so matching
+        # on the label would mis-flag people.
+        is_admin = r["email"].strip().lower() in ADMIN_EMAILS
         if is_admin: admin_idx.append(i)
         role = r["role"] + ("  •  ADMIN" if is_admin else "")
         # reportlab Paragraphs parse their text as markup, so every value that
@@ -213,14 +222,15 @@ def build_pdf(rows):
                         "Keep this document confidential.", note))
     el.append(Spacer(1, 6))
     el.append(Spacer(1, 6))
-    el.append(Paragraph("<b>Ayman Madbouly</b> (<font face='Courier'>ayman.madbouly@ringroad.re</font>) and "
-                        "<b>Mohamed Ayman</b> are administrators: they sign in to the Admin Dashboard and can "
-                        "view and edit every employee's vacation balance.", note))
+    el.append(Paragraph("<b>The system has exactly two administrators: Ayman Madbouly</b> "
+                        "(<font face='Courier'>ayman.madbouly@ringroad.re</font>) <b>and Mohamed Ayman</b> "
+                        "(<font face='Courier'>mohamed.ayman@ringroad.re</font>). Only they sign in to the Admin "
+                        "Dashboard and only they can view and edit vacation balances.", note))
     el.append(Spacer(1, 6))
-    el.append(Paragraph("<b>Mr. Sayed</b> is an administrator as well as the TeleSales team leader: he opens the "
-                        "Admin Dashboard, can edit vacation balances, and changes his own password at "
-                        "<b>My Account → Change Password</b>. An administrator can never set another person's "
-                        "password from the app — each account changes its own.", note))
+    el.append(Paragraph("<b>Mr. Sayed</b> is the TeleSales <b>Team Leader</b> and uses the employee app like "
+                        "everyone else — Team Leader is a job title, not an administrator role. He still "
+                        "changes his own password from <b>More → Security</b>, as every user does. Nobody, "
+                        "administrators included, can change another person's password from inside the app.", note))
     doc.build(el, onFirstPage=band, onLaterPages=band)
 
 def main():
