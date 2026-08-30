@@ -1,7 +1,7 @@
-import { Notifs } from '../../lib/data.js?v=20260820b';
-import { el, icon, pageHead, emptyState } from '../../lib/ui.js?v=20260820b';
-import { ago } from '../../lib/time.js?v=20260820b';
-import { toastOk } from '../../lib/toast.js?v=20260820b';
+import { Notifs } from '../../lib/data.js?v=20260830a';
+import { el, icon, pageHead, emptyState } from '../../lib/ui.js?v=20260830a';
+import { ago } from '../../lib/time.js?v=20260830a';
+import { toastOk } from '../../lib/toast.js?v=20260830a';
 
 const STYLE = {
   leave_approved: ['checkcircle', 'var(--teal)', 'var(--teal-050)'],
@@ -15,6 +15,8 @@ const STYLE = {
   rest_approved: ['checkcircle', 'var(--teal)', 'var(--teal-050)'],
   rest_denied: ['xcircle', 'var(--danger)', 'var(--danger-bg)'],
   rest_submitted: ['moon', 'var(--info)', 'var(--info-bg)'],
+  // v4 — an admin changed this person's vacation allowance
+  balance_updated: ['briefcase', 'var(--info)', 'var(--info-bg)'],
   info: ['info', 'var(--info)', 'var(--info-bg)'],
 };
 

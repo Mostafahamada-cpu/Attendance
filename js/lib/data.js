@@ -1,6 +1,6 @@
 // Domain data access — all ta_* tables. Thin wrappers over supabase db.
-import { db, userId } from './supabase.js?v=20260820b';
-import { todayYMD, ymd } from './time.js?v=20260820b';
+import { db, userId } from './supabase.js?v=20260830a';
+import { todayYMD, ymd } from './time.js?v=20260830a';
 
 // ---- Profiles -------------------------------------------------------------
 export const Profiles = {
@@ -51,10 +51,33 @@ function unwrapClock(res) {
 }
 
 // ---- Leave balances -------------------------------------------------------
+// Read-only over PostgREST for EVERYONE, admins included (db/schema-v4.sql):
+// the table has no INSERT/UPDATE policy and the grants are revoked. An admin
+// changes an allowance through ta_set_leave_balance(s), which re-checks that
+// the new total is not below the days already used, records who changed what
+// in ta_balance_adjustments, and notifies the employee. `used_days` is never
+// writable by hand — only ta_review_leave() moves it, on final approval.
 export const Balances = {
   mine: (empId = userId()) => db.list('ta_leave_balances', `employee_id=eq.${empId}&select=*&order=leave_type.asc`),
   all: () => db.list('ta_leave_balances', 'select=*,ta_profiles(full_name,department,avatar_url)'),
-  update: (id, patch) => db.update('ta_leave_balances', `id=eq.${id}`, patch),
+  forEmployee: (empId) => db.list('ta_leave_balances', `employee_id=eq.${empId}&select=*&order=leave_type.asc`),
+  // One leave type.
+  setTotal: (empId, leaveType, total, note) => db.rpc('ta_set_leave_balance',
+    { p_employee: empId, p_leave_type: leaveType, p_total: total, p_note: note || null }),
+  // All three at once, atomically — pass null for a type to leave it untouched.
+  // Returns the employee's stored balances, so the caller can render the
+  // authoritative figures instead of the ones it just sent.
+  setAll: (empId, { casual = null, medical = null, planned = null }, note) => db.rpc('ta_set_leave_balances',
+    { p_employee: empId, p_casual: casual, p_medical: medical, p_planned: planned, p_note: note || null }),
+};
+
+// ---- Vacation-balance audit trail ----------------------------------------
+// Append-only. Employees see their own history; admins see everyone's.
+export const BalanceLog = {
+  forEmployee: (empId, limit = 20) => db.list('ta_balance_adjustments',
+    `employee_id=eq.${empId}&select=*,changed:ta_profiles!changed_by(full_name)&order=created_at.desc&limit=${limit}`),
+  recent: (limit = 50) => db.list('ta_balance_adjustments',
+    `select=*,ta_profiles!employee_id(full_name,department,avatar_url),changed:ta_profiles!changed_by(full_name)&order=created_at.desc&limit=${limit}`),
 };
 
 // ---- Leave requests -------------------------------------------------------

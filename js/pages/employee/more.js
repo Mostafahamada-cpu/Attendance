@@ -1,7 +1,7 @@
-import { auth } from '../../lib/supabase.js?v=20260820b';
-import { Notifs } from '../../lib/data.js?v=20260820b';
-import { el, icon, avatar, pageHead } from '../../lib/ui.js?v=20260820b';
-import { toastOk, toastErr, modal, confirmDialog } from '../../lib/toast.js?v=20260820b';
+import { auth } from '../../lib/supabase.js?v=20260830a';
+import { Notifs } from '../../lib/data.js?v=20260830a';
+import { el, icon, avatar, pageHead } from '../../lib/ui.js?v=20260830a';
+import { toastOk, toastErr, modal, confirmDialog } from '../../lib/toast.js?v=20260830a';
 
 export default async function morePage({ profile, navigate }) {
   const unread = (await Notifs.unread().catch(() => [])).length;

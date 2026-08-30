@@ -1,9 +1,10 @@
-import { Profiles, Attendance, OffDays } from '../../lib/data.js?v=20260820b';
-import { el, icon, avatar, pill, emptyState } from '../../lib/ui.js?v=20260820b';
-import { toastOk, toastErr } from '../../lib/toast.js?v=20260820b';
-import { ymd, todayYMD, fmtShortDate, fmtHM, minToHM, minToDur, MONTHS, DOW } from '../../lib/time.js?v=20260820b';
+import { Profiles, Attendance, OffDays, Balances } from '../../lib/data.js?v=20260830a';
+import { el, icon, avatar, pill, emptyState } from '../../lib/ui.js?v=20260830a';
+import { toastOk, toastErr } from '../../lib/toast.js?v=20260830a';
+import { ymd, todayYMD, fmtShortDate, fmtHM, minToHM, minToDur, MONTHS, DOW } from '../../lib/time.js?v=20260830a';
+import { editVacationBalance, LEAVE_TYPES } from './balances.js?v=20260830a';
 
-export default async function adminEmployees() {
+export default async function adminEmployees({ refresh } = {}) {
   const people = (await Profiles.all()).filter(p => p.role === 'employee');
   const screen = el('div.fade-up');
   screen.append(el('div', { style: { marginBottom: '20px' } },
@@ -18,8 +19,6 @@ export default async function adminEmployees() {
 
   const grid = el('div', { style: { display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))' } });
   screen.append(grid);
-  const detailHost = el('div');
-  screen.append(detailHost);
 
   function drawList(q = '') {
     grid.replaceChildren();
@@ -39,10 +38,17 @@ export default async function adminEmployees() {
   }
 
   async function openDetail(p) {
-    detailHost.replaceChildren();
-    const modalScrim = el('div.modal-scrim', { style: { placeItems: 'center' } });
+    // The scrim is position:fixed, so it must be a child of <body>. Mounting it
+    // inside the page would trap it: the screen's .fade-up wrapper keeps its
+    // animated transform (animation-fill-mode: both), and a transformed element
+    // becomes the containing block for fixed descendants — which clipped a tall
+    // detail panel off the top of the window with no way to scroll to it.
+    document.querySelectorAll('.emp-detail-scrim').forEach(n => n.remove());
+    const modalScrim = el('div.modal-scrim.emp-detail-scrim', { style: { placeItems: 'center' } });
     const panel = el('div.modal', { style: { maxWidth: '640px', maxHeight: '88vh', overflowY: 'auto', borderRadius: 'var(--r-xl)' } });
-    const close = () => modalScrim.remove();
+    const close = () => { modalScrim.remove(); window.removeEventListener('hashchange', close); };
+    // It now outlives the route's DOM, so tie it to navigation explicitly.
+    window.addEventListener('hashchange', close);
     modalScrim.addEventListener('click', e => { if (e.target === modalScrim) close(); });
 
     const head = el('div.row', { style: { gap: '14px', marginBottom: '18px' } });
@@ -55,10 +61,14 @@ export default async function adminEmployees() {
 
     panel.append(el('div.center-text.muted.small', 'Loading attendance…'));
     modalScrim.append(panel);
-    detailHost.append(modalScrim);
+    document.body.append(modalScrim);
 
     const now = new Date();
-    const [recs, off] = await Promise.all([Attendance.forMonth(p.id, now.getFullYear(), now.getMonth()), OffDays.mine(p.id)]);
+    const [recs, off, bal] = await Promise.all([
+      Attendance.forMonth(p.id, now.getFullYear(), now.getMonth()),
+      OffDays.mine(p.id),
+      Balances.forEmployee(p.id).catch(() => []),
+    ]);
     panel.lastChild.remove();
 
     // Stats this month
@@ -79,6 +89,12 @@ export default async function adminEmployees() {
       el('div.tiny.muted', 'Can review and approve leave requests')));
     mgrRow.append(managerToggle(p));
     panel.append(mgrRow);
+
+    // ── Vacation balance ─────────────────────────────────────────────────
+    //  Read-only figures straight from ta_leave_balances; the button opens the
+    //  same Edit Vacation Balance dialog the Vacation Balances screen uses, so
+    //  there is one code path and one set of guard rails.
+    panel.append(vacationCard(p, bal, close, refresh));
 
     const stats = el('div.stat-3', { style: { marginBottom: '18px' } });
     stats.append(mini('Present', present), mini('Absent', absent), mini('Avg Hrs', recs.length ? minToHM(totalMin / recs.length) : '00:00'));
@@ -106,6 +122,42 @@ export default async function adminEmployees() {
   sInput.addEventListener('input', () => drawList(sInput.value));
   drawList();
   return screen;
+}
+
+// Vacation balance panel — view the current allowance, and edit it.
+//  `byType` folds the three ta_leave_balances rows into the shape the shared
+//  editVacationBalance() dialog expects.
+function vacationCard(p, bal, closeDetail, refresh) {
+  const byType = {};
+  for (const b of bal || []) byType[b.leave_type] = b;
+  const total = (bal || []).reduce((s, b) => s + b.total_days, 0);
+  const used = (bal || []).reduce((s, b) => s + b.used_days, 0);
+
+  const card = el('div', {
+    style: { padding: '13px 15px', background: 'var(--surface-2)', borderRadius: 'var(--r)', marginBottom: '18px' },
+  });
+  const head = el('div.row.between', { style: { gap: '12px', marginBottom: '10px' } });
+  head.append(el('div.grow',
+    el('div.small.b', 'Vacation balance'),
+    el('div.tiny.muted', `${total - used} of ${total} day(s) remaining`)));
+  const edit = el('button.btn.btn--primary.btn--sm', { style: { flex: 'none' } }, 'Edit Vacation Balance');
+  // Close the drill-down first: the dialog sits above it, and after saving we
+  // re-render the whole screen so the new figures are read back from the DB.
+  edit.addEventListener('click', () => {
+    closeDetail?.();
+    editVacationBalance(p, byType, () => refresh?.());
+  });
+  head.append(edit);
+  card.append(head);
+
+  const grid = el('div.row.wrap', { style: { gap: '8px' } });
+  for (const [key, label] of LEAVE_TYPES) {
+    const b = byType[key];
+    grid.append(el('span.pill.pill--present', { style: { height: '24px' } },
+      `${label} ${b ? `${b.remaining_days}/${b.total_days}` : '—'}`));
+  }
+  card.append(grid);
+  return card;
 }
 
 // Toggling manager rights goes through ta_set_manager(): a database trigger

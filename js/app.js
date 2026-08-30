@@ -1,30 +1,31 @@
 // RingRoad Attendance — entry point: session, routing, app shells.
-import { auth, getSession, setLogoutHandler } from './lib/supabase.js?v=20260820b';
-import { Profiles, Notifs } from './lib/data.js?v=20260820b';
-import { el, icon, avatar, mount } from './lib/ui.js?v=20260820b';
-import { toastErr } from './lib/toast.js?v=20260820b';
-import { SUPABASE_URL } from '../config.js?v=20260820b';
+import { auth, getSession, setLogoutHandler } from './lib/supabase.js?v=20260830a';
+import { Profiles, Notifs } from './lib/data.js?v=20260830a';
+import { el, icon, avatar, mount } from './lib/ui.js?v=20260830a';
+import { toastErr } from './lib/toast.js?v=20260830a';
+import { SUPABASE_URL } from '../config.js?v=20260830a';
 
-import loginPage from './pages/login.js?v=20260820b';
-import empHome from './pages/employee/home.js?v=20260820b';
-import empApply from './pages/employee/apply-leave.js?v=20260820b';
-import empLeaves from './pages/employee/my-leaves.js?v=20260820b';
-import empCalendar from './pages/employee/calendar.js?v=20260820b';
-import empNotifs from './pages/employee/notifications.js?v=20260820b';
-import empChat from './pages/employee/chat.js?v=20260820b';
-import empMore from './pages/employee/more.js?v=20260820b';
-import empWeekend from './pages/employee/weekend.js?v=20260820b';
-import empRest from './pages/employee/rest-days.js?v=20260820b';
-import empApprovals from './pages/employee/approvals.js?v=20260820b';
-import admDashboard from './pages/admin/dashboard.js?v=20260820b';
-import admLeaves from './pages/admin/leaves.js?v=20260820b';
-import admEmployees from './pages/admin/employees.js?v=20260820b';
-import admBalances from './pages/admin/balances.js?v=20260820b';
-import admOffdays from './pages/admin/offdays.js?v=20260820b';
-import admAnalytics from './pages/admin/analytics.js?v=20260820b';
-import admWeekend from './pages/admin/weekend.js?v=20260820b';
-import admRest from './pages/admin/rest-days.js?v=20260820b';
-import admGeofence from './pages/admin/geofence.js?v=20260820b';
+import loginPage from './pages/login.js?v=20260830a';
+import empHome from './pages/employee/home.js?v=20260830a';
+import empApply from './pages/employee/apply-leave.js?v=20260830a';
+import empLeaves from './pages/employee/my-leaves.js?v=20260830a';
+import empCalendar from './pages/employee/calendar.js?v=20260830a';
+import empNotifs from './pages/employee/notifications.js?v=20260830a';
+import empChat from './pages/employee/chat.js?v=20260830a';
+import empMore from './pages/employee/more.js?v=20260830a';
+import empWeekend from './pages/employee/weekend.js?v=20260830a';
+import empRest from './pages/employee/rest-days.js?v=20260830a';
+import empApprovals from './pages/employee/approvals.js?v=20260830a';
+import admDashboard from './pages/admin/dashboard.js?v=20260830a';
+import admLeaves from './pages/admin/leaves.js?v=20260830a';
+import admEmployees from './pages/admin/employees.js?v=20260830a';
+import admBalances from './pages/admin/balances.js?v=20260830a';
+import admOffdays from './pages/admin/offdays.js?v=20260830a';
+import admAnalytics from './pages/admin/analytics.js?v=20260830a';
+import admWeekend from './pages/admin/weekend.js?v=20260830a';
+import admRest from './pages/admin/rest-days.js?v=20260830a';
+import admGeofence from './pages/admin/geofence.js?v=20260830a';
+import admAccount from './pages/admin/account.js?v=20260830a';
 
 const appRoot = document.getElementById('app');
 export const state = { profile: null, unread: 0 };
@@ -39,6 +40,7 @@ const ADM_ROUTES = {
   admin: admDashboard, 'admin/leaves': admLeaves, 'admin/employees': admEmployees,
   'admin/balances': admBalances, 'admin/offdays': admOffdays, 'admin/analytics': admAnalytics,
   'admin/weekend': admWeekend, 'admin/rest-days': admRest, 'admin/geofence': admGeofence,
+  'admin/account': admAccount,
 };
 
 export function navigate(hash) { location.hash = hash; }
@@ -60,7 +62,7 @@ const ADM_NAV = [
   { r: 'admin', icon: 'grid', label: 'Dashboard' },
   { r: 'admin/leaves', icon: 'calplus', label: 'Leave Requests' },
   { r: 'admin/employees', icon: 'users', label: 'Employees' },
-  { r: 'admin/balances', icon: 'briefcase', label: 'Leave Balances' },
+  { r: 'admin/balances', icon: 'briefcase', label: 'Vacation Balances' },
   { r: 'admin/offdays', icon: 'calendar', label: 'Off-Days' },
   { r: 'admin/weekend', icon: 'swap', label: 'Weekend Changes' },
   { r: 'admin/rest-days', icon: 'moon', label: 'Rest Days' },
@@ -100,9 +102,12 @@ function admShell(routeKey) {
     side.append(a);
   }
   const foot = el('div.side-foot');
-  const prof = el('div.side-link', { style: { cursor: 'default' } });
+  // The profile block is the way into My Account — where an admin changes their
+  // own password. The admin shell has no bottom nav, so without this there is
+  // no route to it.
+  const prof = el('a.side-link' + (routeKey === 'admin/account' ? '.on' : ''), { href: '#/admin/account' });
   prof.append(avatar(state.profile, 'sm'));
-  prof.append(el('div', el('div.small.b', state.profile?.full_name || 'Admin'), el('div.tiny.muted', 'Administrator')));
+  prof.append(el('div', el('div.small.b', state.profile?.full_name || 'Admin'), el('div.tiny.muted', 'My Account')));
   const out = el('a.side-link', { href: '#/logout', html: icon('logout', 'ic') + '<span class="t">Logout</span>' });
   foot.append(prof, out);
   side.append(foot);

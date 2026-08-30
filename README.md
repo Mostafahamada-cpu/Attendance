@@ -22,6 +22,8 @@ attendance-app/
 │   ├── schema.sql          # tables, RLS, triggers, atomic leave-review RPC
 │   ├── schema-v2.sql       # ← geofence · weekend changes · rest days (run after schema.sql)
 │   ├── schema-v3.sql       # ← manager role · two-stage leave approval (run after v2)
+│   ├── schema-v4.sql       # ← admin vacation-balance management (run after v3)
+│   ├── provision-users-v2.sql  # ← the seven new/updated users (run after v4)
 │   └── seed.sql            # role promotion + demo off-days (edit emails)
 └── js/
     ├── app.js              # session, routing, employee + admin shells
@@ -32,7 +34,7 @@ attendance-app/
         ├── employee/       # home · apply-leave · my-leaves · calendar · notifications ·
         │                   #   chat · more · weekend · rest-days · approvals (managers)
         └── admin/          # dashboard · leaves · employees · balances · offdays ·
-                            #   weekend · rest-days · geofence · analytics
+                            #   weekend · rest-days · geofence · analytics · account
 ```
 
 ## 2. Setup (≈ 5 minutes)
@@ -114,7 +116,37 @@ like the others. It turns leave into a real two-stage HR workflow and adds:
 > person → Manager rights** — or leave requests will sit at *Waiting for Manager* forever.
 > The admin Leave Requests screen shows a warning until you do.
 
+### b4. Run the v4 migration (REQUIRED)
+Paste and run [`db/schema-v4.sql`](db/schema-v4.sql). Additive and idempotent. It is what
+makes **Admin → Vacation Balances** editable:
+
+- **`ta_balance_adjustments`** — an append-only audit trail: who changed whose allowance,
+  from what to what, when, and why.
+- **`ta_set_leave_balance(employee, type, total, note)`** and
+  **`ta_set_leave_balances(employee, casual, medical, planned, note)`** — SECURITY DEFINER,
+  admin-gated. The plural one applies all three types in a single transaction, so a rejected
+  figure rolls the others back instead of leaving a half-applied edit.
+- **`ta_leave_balances` becomes read-only over the API for everyone, admins included.**
+  `ta_bal_upd` / `ta_bal_ins` are dropped and the grants revoked, so the RPC is the only way
+  a total can move. That is what stops an admin PATCHing `used_days` out of step with the
+  approved leave that produced it — and what stops an employee touching their own balance.
+- A backfill giving every existing profile all three balance rows.
+
+> Verify it landed:
+> ```sql
+> select has_table_privilege('authenticated','public.ta_leave_balances','UPDATE') as should_be_false;
+> ```
+
+### b5. Provision the seven new/updated users (optional)
+[`db/provision-users-v2.sql`](db/provision-users-v2.sql) adds Sherif, Omar Ayman, Peter and
+Mostafa, promotes **Mr Sayed** to admin, and confirms the two Ayman admin accounts. It is
+idempotent and creates **no duplicates**: accounts are matched by email and existing ones are
+updated in place with their **passwords untouched**. It never auto-creates an admin — the
+admin rows are promote-only, so a typo cannot mint an administrator. Its final two `SELECT`s
+report each person's access tier and flag any roster entry that matched no account.
+
 ### c. Create users
+
 **Dashboard → Authentication → Users → Add user** (tick **Auto Confirm User**). Create at
 least one admin and two employees, e.g. `admin@ringroad.re`, `employee1@…`, `employee2@…`.
 The trigger provisions each profile automatically.
@@ -160,6 +192,12 @@ balance auto-updates + notification** · employee drill-down (calendar stats, hi
 pattern) · team leave-balance table with search & smart filters · per-employee weekly off-day
 editor · analytics (today/week/month/custom → total & avg hours, attendance rate, late
 arrivals, absences, daily-hours chart).
+
+**Admin (v4):** **Vacation Balances** — the team table now lists *everyone* (admins take
+leave too) and every row has an **Edit balance** action; the same **Edit Vacation Balance**
+dialog is on each person's card under **Employees**. Set Casual / Medical / Planned days,
+add an optional reason, save. Also **My Account** — the admin shell had no bottom nav and
+therefore no route to *Change Password*; administrators now have one.
 
 **Admin (v3):** **Leave Requests** rebuilt around dual approval — *Awaiting you / In
 progress / Approved / Rejected* buckets, full request detail with balance and attachment,
@@ -302,6 +340,73 @@ absent / off-day / today states, with a legend entry for each. Tapping a leave d
 the type, span and reason, and marks pending days *"Not yet approved — this day is still
 provisional."*
 
+## 3d. Vacation balances (v4)
+
+### Editing an allowance
+*Admin → Vacation Balances* lists every member of staff with their total, used and remaining
+days, split by leave type. **Edit balance** (or **Edit Vacation Balance** on the person's card
+under *Employees*) opens one dialog with a field per leave type, pre-filled with what the
+database currently holds, each showing how many days are already used. A reason is optional
+and is kept with the change.
+
+Only **Total** is editable. `used_days` comes from approved leave and is never typed in by a
+human — `ta_review_leave()` is the only thing that moves it, on final approval. `remaining_days`
+is a generated column, so it can never drift from `total − used`.
+
+Only the types you actually changed are sent, and they are applied in **one transaction**: if
+the medical figure is refused, the casual one is rolled back with it, so a half-applied edit
+is not a state the admin can reach.
+
+### It persists
+The new total is written to `ta_leave_balances` in Supabase the moment you press Save. Nothing
+about the balance is cached in the browser, so it survives a refresh, a logout and a fresh
+sign-in, and it appears in the employee's own account the next time their screen loads. The
+employee also gets a notification naming the old and new figures.
+
+### A total can never go below days already used
+Someone who has taken 4 casual days cannot be dropped to 2 — that would silently manufacture
+negative remaining days. The dialog blocks it, and `ta_set_leave_balance()` re-checks it under
+a row lock, so two admins editing at once cannot race past it and neither can a hand-built
+PostgREST call.
+
+### Employees cannot edit their own balance
+This is enforced in the database, not the UI. `ta_leave_balances` has **no INSERT or UPDATE
+policy at all** after v4 and the table grants are revoked, so PostgREST refuses the write to
+*every* authenticated user — admins included — before RLS is even consulted. The only write
+path is `ta_set_leave_balance(s)`, which raises unless `ta_is_admin()` is true. Employees keep
+`SELECT` on their own row, which is what their balance rings read.
+
+### Every change is recorded
+`ta_balance_adjustments` stores the employee, leave type, before, after, days used at the time,
+who made the change, the reason and the timestamp. The last five show inside the edit dialog;
+the full history is one query:
+
+```sql
+select a.created_at, e.full_name as employee, a.leave_type,
+       a.total_before, a.total_after, w.full_name as changed_by, a.note
+  from public.ta_balance_adjustments a
+  join public.ta_profiles e on e.id = a.employee_id
+  left join public.ta_profiles w on w.id = a.changed_by
+ order by a.created_at desc;
+```
+
+## 3e. Roles and passwords
+
+`ta_role` is still just `employee` | `admin`. A job title — Engineer, Office Boy, Developer,
+TeleSales Agent, Team Leader — lives in `ta_profiles.position` and **carries no permissions of
+its own**, which is why adding people cannot widen anyone's access.
+
+| Tier | Reaches |
+| --- | --- |
+| `admin` | Admin shell: Dashboard, Leave Requests, Employees, **Vacation Balances (view + edit)**, Off-Days, Weekend Changes, Rest Days, Geofence, Analytics, My Account |
+| `employee` | Employee shell only: clock in/out, own attendance, own leave, **own balance (read-only)**, calendar, notifications, More |
+
+Everyone changes **their own** password and nobody else's — employees at *More → Change
+Password*, admins at *My Account → Change Password*. Both call the GoTrue `/user` endpoint as
+the signed-in user, so there is deliberately no "set this person's password" button anywhere in
+the admin UI. A forgotten password is reset from *Forgot password?* on the login screen, or by
+an owner in the Supabase dashboard.
+
 ## 4. Security (defence in depth)
 
 Row Level Security is enabled on every table. Employees can read **only their own**
@@ -323,6 +428,16 @@ retains `UPDATE`, so the "deduct only on final approval" rule has no bypass. And
 closes a pre-existing privilege-escalation hole: `ta_prof_upd` allows `id = auth.uid()`,
 which also let any user set their own `role = 'admin'` — changing `role` or `is_manager`
 now requires an admin (or a direct database session, so seeding still works).
+
+v4 applies the same rule to vacation balances. `ta_leave_balances` keeps **no INSERT or
+UPDATE policy at all** and its write grants are revoked, so PostgREST refuses the write to
+every authenticated user — including admins — before RLS is consulted. The only write paths
+are `ta_set_leave_balance(s)` (admin-gated, re-checks the used-days floor under a row lock,
+records the change) and `ta_review_leave()` (the only thing that touches `used_days`). An
+employee therefore cannot alter their own allowance, and an admin cannot alter one without
+leaving a trace in `ta_balance_adjustments`. `db/fix-grants.sql` was updated to match: it no
+longer re-grants write on `ta_leave_balances` or `ta_leave_requests`, which would otherwise
+have quietly reopened both holes the next time somebody ran it.
 
 **Honest limitation:** a determined user on a rooted/jailbroken device or with a mock-location
 app can feed the browser false coordinates — no browser-based geofence can rule that out.
@@ -405,6 +520,29 @@ add your deployed URL to the redirect allow-list.
     card via a short-lived signed URL.
 32. With **no managers assigned**, the admin Leave Requests screen shows the warning banner
     and offers the manager-approval toggle as the fix.
+
+**v4 checklist — vacation balances**
+
+33. Log in as **admin** → **Vacation Balances** → every member of staff is listed with Total,
+    Used, Remaining and a per-type breakdown, and each row has **Edit balance**.
+34. **Edit balance** → change Casual to a new number → **Save balance** → the toast confirms
+    and the table shows the new figure.
+35. **Refresh the page (F5)** → the new figure is still there. **Log out and back in** → still
+    there. (It is read from `ta_leave_balances` every time; nothing is cached client-side.)
+36. Log in as **that employee** → Home shows the new allowance on the balance rings, and a
+    notification names the old and new values.
+37. Try to set a total **below the days already used** → refused in the dialog, and refused
+    again by `rpc/ta_set_leave_balance` if you call it directly.
+38. As an **employee**, `PATCH /rest/v1/ta_leave_balances?id=eq.<own row>` → refused (no policy
+    + no grant). `rpc/ta_set_leave_balance` as an employee → *"Only an admin can change a
+    vacation balance"*. Both hold for an admin's raw PATCH too.
+39. **Employees → a person → Edit Vacation Balance** opens the same dialog and saves the same way.
+40. `select * from ta_balance_adjustments order by created_at desc` → one row per change, with
+    the before/after totals, the admin who made it and the reason.
+41. **Mr Sayed** logs in → lands on the **Admin Dashboard** → sidebar footer → **My Account** →
+    **Change Password** → sets a new password → logs out → signs in with the new one.
+42. Apply for leave and approve it → `used_days` rises and Remaining falls, while **Total stays
+    at whatever the admin set**.
 ```
 
 **Verified already:** the app boots with zero console errors, all 20 modules load, the login

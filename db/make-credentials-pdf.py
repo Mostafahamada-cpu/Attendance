@@ -5,6 +5,9 @@ RingRoad Attendance — credentials PDF generator.
 Reads db/credentials-input.csv and produces a professional PDF:
     Name | Department/Role | Email | Password
 
+The PDF also documents what each access tier can do, including the
+Admin Vacation Balance Management feature added in schema-v4.
+
 RULES (by design — never fabricates passwords):
   * status=existing  -> the password column MUST be filled with the user's REAL
     existing RingRoad password. If ANY existing row is blank, the script STOPS,
@@ -19,6 +22,7 @@ Usage:  python db/make-credentials-pdf.py
 Output: ../Attendance-Credentials.pdf  (repo root, outside the deployed app)
 """
 import csv, os, sys, secrets
+from xml.sax.saxutils import escape as xml_escape
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CSV_IN = os.path.join(HERE, "credentials-input.csv")
@@ -71,6 +75,9 @@ def build_pdf(rows):
     cellb=ParagraphStyle('cellb', parent=ss['Normal'], fontName='Helvetica-Bold', fontSize=8.7, textColor=INK, leading=11)
     mono=ParagraphStyle('mono', parent=ss['Normal'], fontName='Courier-Bold', fontSize=9, textColor=TEAL_D, leading=11)
     hdr=ParagraphStyle('hdr', parent=ss['Normal'], fontName='Helvetica-Bold', fontSize=8.5, textColor=colors.white, leading=11)
+    H2 = ParagraphStyle('H2', parent=ss['Normal'], fontName='Helvetica-Bold', fontSize=12.5, textColor=TEAL_D, leading=16)
+    bullet = ParagraphStyle('bullet', parent=ss['Normal'], fontName='Helvetica', fontSize=8.8,
+                            textColor=INK, leading=12.6, leftIndent=9, spaceAfter=3.5)
 
     def band(canvas, doc):
         canvas.saveState()
@@ -89,17 +96,80 @@ def build_pdf(rows):
           Spacer(1, 8),
           Paragraph("Log in with the email and password below. Admin accounts open the management "
                     "dashboard; all others open the employee app. Please change your password after "
-                    "first sign-in (More → Change Password).", body), Spacer(1, 4)]
+                    "first sign-in — employees at <b>More → Change Password</b>, administrators at "
+                    "<b>My Account → Change Password</b>.", body), Spacer(1, 10)]
+
+    # ---- What's new: admin vacation balance management --------------------
+    el.append(Paragraph("New — Admin Vacation Balance Management", H2))
+    el.append(Spacer(1, 5))
+    el.append(Paragraph(
+        "Administrators can now see and correct every employee's vacation allowance from inside the "
+        "app. It lives on the <b>Vacation Balances</b> screen, and on each person's card under "
+        "<b>Employees</b>.", body))
+    el.append(Spacer(1, 6))
+    for line in [
+        "<b>View</b> — the Vacation Balances table lists every member of staff with their total, "
+        "used and remaining days, broken down into Casual, Medical and Planned leave.",
+        "<b>Edit</b> — the <b>Edit Vacation Balance</b> button opens a dialog where the admin types "
+        "the correct number of available days for each leave type, with an optional reason for the change.",
+        "<b>Saved to the database</b> — pressing Save writes the new allowance to Supabase straight "
+        "away. It survives a refresh, a logout and a new sign-in, because nothing is kept in the browser.",
+        "<b>Visible to the employee</b> — the new balance appears in that person's own account the "
+        "next time their screen loads, and they receive a notification telling them what changed.",
+        "<b>Employees cannot edit their own balance.</b> The balance table is read-only for every "
+        "employee; only an administrator can change an allowance, and every change is recorded with "
+        "who made it and when.",
+        "<b>Existing leave rules are unchanged.</b> Days already used cannot be erased by lowering a "
+        "total, and used days still move only when a leave request is finally approved.",
+    ]:
+        el.append(Paragraph("•&nbsp;&nbsp;" + line, bullet))
+    el.append(Spacer(1, 12))
+
+    # ---- Roles legend -----------------------------------------------------
+    el.append(Paragraph("Roles &amp; access", H2))
+    el.append(Spacer(1, 5))
+    roles = [[Paragraph("Access tier", hdr), Paragraph("Roles in this list", hdr), Paragraph("What they can reach", hdr)],
+             [Paragraph("Admin", cellb),
+              Paragraph("Admin, Management", cell),
+              Paragraph("Admin Dashboard, Employees, <b>Vacation Balances (view + edit)</b>, Leave Requests, "
+                        "Off-Days, Weekend Changes, Rest Days, Geofence, Analytics, and My Account "
+                        "(own password).", cell)],
+             [Paragraph("Employee", cellb),
+              Paragraph("TeleSales, Engineer, Office Boy, Developer, Team Leader", cell),
+              Paragraph("Employee app only: clock in/out, own attendance and calendar, apply for leave, "
+                        "own leave history, own vacation balance (<b>read-only</b>), notifications, and "
+                        "More → Change Password.", cell)]]
+    rt = Table(roles, colWidths=[22*mm, 46*mm, 100*mm])
+    rt.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), TEAL_D), ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5), ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6), ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, ROW]),
+        ('BOX', (0, 0), (-1, -1), 0.6, TEAL), ('LINEBELOW', (0, 0), (-1, -1), 0.4, colors.HexColor("#E1E9E9"))]))
+    el.append(rt)
+    el.append(Spacer(1, 6))
+    el.append(Paragraph("A job title (Engineer, Office Boy, Developer, TeleSales) is a label only — it "
+                        "carries no permissions of its own. Access is decided solely by the access tier, "
+                        "so the tier column below is the one that matters.", note))
+    el.append(Spacer(1, 14))
+
+    el.append(Paragraph("System users", H2))
+    el.append(Spacer(1, 5))
 
     data = [[Paragraph("#",hdr),Paragraph("Name",hdr),Paragraph("Department / Role",hdr),
              Paragraph("Email",hdr),Paragraph("Password",hdr)]]
     admin_idx = []
     for i, r in enumerate(rows, 1):
-        is_admin = r["role"].strip().lower() in ("admin", "management")
+        rl = r["role"].strip().lower()
+        is_admin = ("admin" in rl) or ("management" in rl)
         if is_admin: admin_idx.append(i)
         role = r["role"] + ("  •  ADMIN" if is_admin else "")
-        data.append([Paragraph(str(i),cell), Paragraph(r["name"],cellb),
-                     Paragraph(role,cell), Paragraph(r["email"],cell), Paragraph(r["password"], mono)])
+        # reportlab Paragraphs parse their text as markup, so every value that
+        # comes from the CSV must be escaped. Passwords are the reason: one
+        # containing "&" (e.g. Sable&888&HP) was being mangled into an entity.
+        data.append([Paragraph(str(i),cell), Paragraph(xml_escape(r["name"]),cellb),
+                     Paragraph(xml_escape(role),cell), Paragraph(xml_escape(r["email"]),cell),
+                     Paragraph(xml_escape(r["password"]), mono)])
     t = Table(data, colWidths=[8*mm,32*mm,34*mm,50*mm,44*mm], repeatRows=1)
     style = [('BACKGROUND',(0,0),(-1,0),TEAL),('VALIGN',(0,0),(-1,-1),'MIDDLE'),
              ('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5),
@@ -112,8 +182,14 @@ def build_pdf(rows):
     el.append(Spacer(1,14))
     el.append(Paragraph("Two people named Nada are separate accounts: <font face='Courier'>nada@ringroad.re</font> "
                         "(TeleSales) and <font face='Courier'>nada.eng@ringroad.re</font> (Engineer). "
-                        "Existing RingRoad logins keep their current password (unchanged); new Engineers use the "
-                        "temporary password shown. Keep this document confidential.", note))
+                        "Existing RingRoad logins keep their current password (unchanged); accounts marked as new "
+                        "use the temporary password shown and should change it after first sign-in. "
+                        "Keep this document confidential.", note))
+    el.append(Spacer(1, 6))
+    el.append(Paragraph("<b>Mr. Sayed</b> is an administrator as well as the TeleSales team leader: he opens the "
+                        "Admin Dashboard, can edit vacation balances, and changes his own password at "
+                        "<b>My Account → Change Password</b>. An administrator can never set another person's "
+                        "password from the app — each account changes its own.", note))
     doc.build(el, onFirstPage=band, onLaterPages=band)
 
 def main():

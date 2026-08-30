@@ -4,8 +4,8 @@
 // derived from the path, and storage RLS (db/schema-v3.sql) lets an employee
 // read only their own folder while managers and admins can read all of them.
 // Viewing always goes through a short-lived signed URL — no public links.
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../../config.js?v=20260820b';
-import { getSession } from './supabase.js?v=20260820b';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../../config.js?v=20260830a';
+import { getSession } from './supabase.js?v=20260830a';
 
 export const BUCKET = 'ta-leave-files';
 export const MAX_BYTES = 5 * 1024 * 1024;          // must match the bucket limit
