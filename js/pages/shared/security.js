@@ -1,6 +1,6 @@
-import { auth } from '../../lib/supabase.js?v=20260830b';
-import { el, icon } from '../../lib/ui.js?v=20260830b';
-import { toastOk, toastErr } from '../../lib/toast.js?v=20260830b';
+import { auth } from '../../lib/supabase.js?v=20260903a';
+import { el, icon } from '../../lib/ui.js?v=20260903a';
+import { toastOk, toastErr } from '../../lib/toast.js?v=20260903a';
 
 // Supabase's own floor. GoTrue enforces it server-side too; checking here just
 // saves a round trip and gives a better message.

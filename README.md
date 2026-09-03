@@ -23,20 +23,24 @@ attendance-app/
 │   ├── schema-v2.sql       # ← geofence · weekend changes · rest days (run after schema.sql)
 │   ├── schema-v3.sql       # ← manager role · two-stage leave approval (run after v2)
 │   ├── schema-v4.sql       # ← admin vacation-balance management (run after v3)
+│   ├── schema-v7.sql       # ← shifts · salary rules · payroll · leave permissions
 │   ├── provision-users-v2.sql  # ← the seven new/updated users (run after v4)
 │   ├── fix-ayman-admin.sql     # ← makes Ayman Madbouly an active admin
 │   ├── fix-admin-roles.sql     # ← EXACTLY two admins (run last, authoritative)
 │   └── seed.sql            # role promotion + demo off-days (edit emails)
 └── js/
     ├── app.js              # session, routing, employee + admin shells
-    ├── lib/                # supabase · data · ui · time · toast · geo · storage
+    ├── lib/                # supabase · data · ui · time · toast · geo · storage ·
+    │                       #   verify (clock-out word) · money (payroll formatting)
     └── pages/
         ├── login.js
         ├── shared/         # leave-review · security (Change Password, both shells)
         ├── employee/       # home · apply-leave · my-leaves · calendar · notifications ·
-        │                   #   chat · more · weekend · rest-days · approvals (managers)
+        │                   #   chat · more · weekend · rest-days · approvals (managers) ·
+        │                   #   permissions (leave permissions) · salary (own payroll)
         └── admin/          # dashboard · leaves · employees · balances · offdays ·
-                            #   weekend · rest-days · geofence · analytics · account
+                            #   weekend · rest-days · geofence · analytics · account ·
+                            #   salary-rules · payroll · permissions
 ```
 
 ## 2. Setup (≈ 5 minutes)
@@ -203,6 +207,55 @@ roles of everyone provisioned, and a `raise warning` you cannot miss in the outp
 count is ever anything but two. (A *warning*, not an exception — raising would roll back the
 fix the script had just applied.)
 
+### b8. Run the v7 migration (REQUIRED)
+Paste and run [`db/schema-v7.sql`](db/schema-v7.sql). Additive and idempotent. It is what
+makes **Salary & Rules**, **Payroll** and **Leave Permissions** work:
+
+- **`ta_shifts`** — the three company shifts, seeded on a stable `code` so re-running never
+  makes a fourth copy and never overwrites hours an admin has edited:
+  *Shift 1* 09:00→17:00 · *Shift 2* 10:00→18:00 · *Shift 3* 11:00→19:00.
+- **`ta_salary_rules`** — one row **per existing employee**, not a second employee table:
+  monthly salary, shift, optional per-person hours, grace period, late rate + optional daily
+  cap, absence basis/multiplier, permission allowance and permission-deduction settings,
+  active flag. Weekly days off stay in the existing **`ta_weekly_off_days`** — the schedule is
+  never duplicated.
+- **`ta_holidays`** — a company holiday is not a working day, so it is never an absence.
+- **`ta_payroll_adjustments`** — manual "other deductions", unique on
+  `(employee, month, lower(label))`, so re-entering the same charge **edits** it instead of
+  adding a second one.
+- **`ta_leave_permissions`** — permission to step out during a working day. Three per calendar
+  month (configurable) are approved on submission; #4 and beyond are created `pending`.
+- **`ta_payroll(employee, year, month)`** / **`ta_payroll_all(year, month)`** — the whole
+  monthly calculation, derived on every call.
+- **`ta_set_salary_rules(...)`, `ta_set_shift(...)`, `ta_set_payroll_defaults(...)`,
+  `ta_set_payroll_adjustment(...)`, `ta_set_holiday(...)`, `ta_review_permission(...)`** —
+  SECURITY DEFINER, admin-gated.
+- **`ta_request_permission(...)`** — the employee's only way in. It counts their own approved
+  permissions for that month **in the database** and decides the status itself, so nobody can
+  submit one pre-approved.
+- `ta_settings` gains **`timezone`** (default `Africa/Cairo`) plus the company defaults a new
+  employee inherits. Every lateness comparison converts the stored `timestamptz` into that
+  zone, so the answer never depends on a browser's clock.
+- A backfill giving every existing profile a rules row, and — only if they have **none** —
+  the default weekly days off for their role (**Sales → Friday**, everyone else →
+  **Friday + Saturday**). An existing schedule is never overwritten.
+
+> **All four new tables are read-only over the API for everyone, admins included.** No
+> INSERT/UPDATE/DELETE policy is created and the grants are revoked, so the RPCs are the only
+> route. In particular an employee cannot INSERT a permission row with `status = 'approved'`,
+> because they cannot INSERT one at all.
+>
+> Verify it landed:
+> ```sql
+> select has_table_privilege('authenticated','public.ta_salary_rules','UPDATE')      as rules_upd,
+>        has_table_privilege('authenticated','public.ta_leave_permissions','INSERT')  as perm_ins;
+> -- both must be FALSE
+> select code, name, start_time, end_time from public.ta_shifts order by sort_order;
+> ```
+>
+> If a new screen reports *"Could not find the function/table"*, PostgREST hasn't picked up the
+> new schema yet. Run `notify pgrst, 'reload schema';` in the SQL editor.
+
 ### c. Create users
 
 **Dashboard → Authentication → Users → Add user** (tick **Auto Confirm User**). Create at
@@ -253,6 +306,22 @@ arrivals, absences, daily-hours chart).
 
 **Everyone (v5):** a **Security → Change Password** section in the settings screen, with
 current-password verification, per-field errors, and the session preserved afterwards.
+
+**Employee (v7):** a **verification word on Clock Out** — a modal asks for `RingRoad`
+(case-insensitive, trimmed) before the day is ended · **Leave Permissions** — request time out
+during a working day, with a live `Used n / 3` counter, an instant-approval preview and the
+month-by-month history · **My Salary & Schedule** — your own shift, grace period, days off,
+deductions and estimated net salary, month by month. Nobody can see anyone else's.
+
+**Admin (v7):** **Salary & Attendance Rules** — company defaults (timezone, salary, grace,
+late rate, permission allowance), the three work shifts, the holiday calendar, and a
+per-employee rules table with an **Edit rules** dialog (also reachable from each person's card
+under **Employees**) · **Payroll** — pick a month, see base / working days / present / late
+days / late minutes / late deduction / absence days / absence deduction / permissions / other
+/ total deductions / net salary for everyone, then open a **Breakdown** that explains every
+EGP with the date it came from · **Leave Permissions** — approve or reject the ones beyond an
+employee's monthly allowance and read anyone's full history · the Dashboard gains an
+**Approved Leave Permissions Today** list so authorised time out is never read as an absence.
 
 **Admin (v4):** **Vacation Balances** — the team table now lists *everyone* (admins take
 leave too) and every row has an **Edit balance** action; the same **Edit Vacation Balance**
@@ -509,6 +578,103 @@ dashboard, or the user uses *Forgot password?* on the login screen.
 `ta_*` table, no password is written to a log, echoed into the DOM, or put in a URL, and the
 fields are `type="password"` and cleared on success.
 
+## 3f. Salary, shifts & payroll (v7)
+
+### Clock-out verification
+Clocking out is the one action an employee cannot undo, so it asks for a shared word first.
+A modal appears **before** the clock-out is sent; the day only ends once `RingRoad` is typed.
+
+The check is `input.trim().toLowerCase() === 'ringroad'`, so `RingRoad`, `ringroad`,
+`RINGROAD`, `RiNgRoAd` and `  RingRoad  ` all pass, and anything else — including an empty
+box or whitespace only — is refused with an inline error while the dialog **stays open**
+(closing it would make a typo look like a cancelled clock-out). Nothing else about clocking
+out changed: the same payload reaches the same `ta_clock_out()` RPC, which still re-checks the
+geofence and still computes the minutes on the server.
+
+### Shifts, grace and lateness
+Each employee is assigned one of the three shifts (or given custom hours). Lateness is
+measured from **their** shift start, in the company timezone from `ta_settings.timezone`:
+
+```
+late minutes     = clock_in (in Africa/Cairo) − shift start, floored at 0
+billable minutes = late minutes − grace period, floored at 0
+late deduction   = billable minutes × late rate     (optionally capped per day)
+```
+
+With a 10:00 shift and a 15-minute grace: **10:00, 10:10 and 10:15 are on time**; 10:16 is
+1 billable minute (1 EGP); 10:30 is 15 billable minutes (15 EGP). Turning up on a day off or
+a holiday is never penalised.
+
+### Absence
+A day costs money only when it is a **scheduled working day with no attendance**. The
+classification order is: attendance → holiday → weekly day off → approved vacation → approved
+rest day → a permission covering the whole shift → still in the future → *absent*. Approved
+vacation, approved rest days, weekly days off and holidays therefore **never** produce a
+deduction.
+
+The daily rate is either `salary ÷ the employee's scheduled working days that month` (the
+default — it respects their own days off and the holiday calendar, so a 23-working-day month
+and a 26-working-day month price differently) or `salary ÷ a fixed month length`, per employee.
+
+### Weekly days off
+Seeded by role — **Sales get one day (Friday)**, developers and engineers get **Friday +
+Saturday** — and editable per person in the rules dialog. They are stored in the existing
+`ta_weekly_off_days`, so the calendar, the rest-day picker and the weekend-change flow all
+keep reading the same schedule they always did.
+
+### Payroll is derived, never stored
+There is deliberately **no deductions table the app writes to on load**. `ta_payroll()`
+recalculates the month from attendance every time it is called, so refreshing the dashboard a
+hundred times produces the same numbers a hundred times — there is nothing to duplicate. The
+only stored money rows are the manual *other deductions*, which an admin types in and which
+carry a unique `(employee, month, lower(label))` index: re-entering the same charge edits it.
+
+```
+Net salary = base salary − (late + absence + permission + other deductions)
+```
+
+## 3g. Monthly leave permissions (v7)
+
+**A leave permission is not a vacation.** Vacation (`ta_leave_requests`) is whole days,
+deducts a balance and needs two-stage approval. A permission (`ta_leave_permissions`) is hours
+inside one working day, deducts no balance, and most of them need no approval at all. They are
+separate tables, separate RPCs and separate screens, and this migration does not touch the
+vacation system.
+
+### The rule
+Every employee gets **3 permissions per calendar month** (configurable per employee):
+
+| | |
+| --- | --- |
+| #1, #2, #3 | **Approved immediately**, `approval_type = automatic`. They never appear as Pending. |
+| #4 and beyond | **Pending → Admin approval.** Never auto-rejected. |
+
+The decision is made by `ta_request_permission()` **in the database**, from a count it runs
+itself. The client sends a date, a window and a reason — nothing else — so an employee cannot
+submit one pre-approved, and cannot change a status afterwards (no INSERT or UPDATE grant).
+
+### The counter resets by itself
+There is no counter column and nothing to reset. *Used* is
+`count(status = 'approved') for permissions whose permission_date falls in that month`, so
+September's 3/3 is October's 0/3 on the 1st, automatically. A rejected or cancelled request
+gives the allowance back; a pending #4 has consumed nothing, because it may still be rejected.
+
+### Statuses
+`approved` · `pending` · `rejected` · `cancelled`, with `approval_type` recording whether an
+approval was `automatic` or by an `admin`, plus `decided_at` / `decided_by` / `admin_note`.
+An employee may cancel their own request while the day is still ahead; an admin may cancel any.
+
+### Attendance and payroll
+An approved permission is attached to its date and shown there — on the employee's calendar
+day detail, on the admin dashboard's *Approved Leave Permissions Today*, on each person's
+history under **Employees**, and in the payroll day-by-day table. It is never read as an
+absence, and a permission that covers the **entire** shift excuses the day outright rather
+than counting as one.
+
+**No deduction by default.** An approved permission costs nothing unless an admin switches
+*Deduct pay for approved permissions* on for that specific employee, and then chooses the
+method: **per minute**, **per permission**, or a **fixed monthly** charge.
+
 ## 4. Security (defence in depth)
 
 Row Level Security is enabled on every table. Employees can read **only their own**
@@ -540,6 +706,23 @@ employee therefore cannot alter their own allowance, and an admin cannot alter o
 leaving a trace in `ta_balance_adjustments`. `db/fix-grants.sql` was updated to match: it no
 longer re-grants write on `ta_leave_balances` or `ta_leave_requests`, which would otherwise
 have quietly reopened both holes the next time somebody ran it.
+
+v7 extends that pattern to money. `ta_salary_rules`, `ta_payroll_adjustments`, `ta_shifts`,
+`ta_holidays` and `ta_leave_permissions` have **no INSERT/UPDATE/DELETE policy and no write
+grant** for `authenticated`, so a crafted PostgREST call from DevTools is refused with a
+Postgres 42501 before RLS is even consulted — for admins too. Every change goes through a
+`SECURITY DEFINER` function that calls `ta_is_admin()` first and re-validates every bound
+server-side, so no salary, grace period, shift, day off or approval status can be set from the
+browser. Reads are equally narrow: `ta_salary_rules` and `ta_payroll_adjustments` are visible
+only to their own employee and to admins — **a manager sees nothing here**, because approving
+leave never requires seeing a colleague's pay — and `ta_payroll()` raises *"You can only view
+your own payroll"* for any `employee_id` other than the caller's unless the caller is an admin.
+The one write an employee can trigger is `ta_request_permission()`, which decides the status
+itself from a count it runs in the database; the request carries a date, a window and a reason
+and nothing more, so "approved" is not something a client can ask for.
+
+Payroll arithmetic is likewise never trusted to the browser. Every figure on the Payroll and
+My Salary screens comes back from `ta_payroll()`; the frontend only formats it.
 
 **Honest limitation:** a determined user on a rooted/jailbroken device or with a mock-location
 app can feed the browser false coordinates — no browser-based geofence can rule that out.
@@ -687,9 +870,102 @@ add your deployed URL to the redirect allow-list.
     change a vacation balance"*.
 59. **Password change still works for everyone**, admin and employee alike — this migration
     touches only the `role` column.
+
+**v7 checklist — clock-out verification**
+
+60. **Clock Out** → a *Confirm clock out* modal appears **before** anything is sent.
+61. `RingRoad`, `ringroad`, `RINGROAD`, `RiNgRoAd` and `  RingRoad  ` (padded) each close the
+    modal and complete the clock-out. Verified in the browser — all five pass.
+62. Random text, a near-miss like `RingRoads`, an **empty** box and **whitespace only** are all
+    refused with an inline error, the field turns red, and the modal **stays open**. No RPC is
+    sent and the day is not ended. Verified — all four refused, `onVerified` never fired.
+63. **Cancel** closes the modal and leaves the employee clocked in.
+64. Everything downstream is unchanged: geofence checks, `total_minutes`, `status='completed'`
+    and the "already clocked out" guard all behave exactly as in step 2.
+
+**v7 checklist — salary rules**
+
+65. **Admin → Salary & Rules** → the three shifts read *09:00–17:00 · 10:00–18:00 ·
+    11:00–19:00*, and the company defaults show `Africa/Cairo`, 6000 EGP, 15 min, 1 EGP/min,
+    3 permissions.
+66. Every employee has a row with a salary, a shift, a grace period, a late rate, an absence
+    rule, a permission allowance, days off and Active/Inactive.
+67. Fresh install → **Sales get Friday only**; developers and engineers get **Friday +
+    Saturday**. An employee who already had off-days keeps them (the backfill only seeds
+    people with none).
+68. **Edit rules** → change a salary, shift, grace period and days off → save → the table and
+    the employee's own screen both show the new values, and the employee gets a
+    *Work rules updated* notification.
+69. Assign **Shift 2 (10:00)** with a **15 min** grace, then check lateness:
+    | Clock in | Result |
+    | --- | --- |
+    | 10:00 / 10:10 / 10:15 | On time, **0 EGP** |
+    | 10:16 | 1 billable minute → **1 EGP** |
+    | 10:30 | 15 billable minutes → **15 EGP** |
+70. **Timezone** — a clock-in stored as `08:16Z` is judged as 10:16 Cairo, not 08:16, whatever
+    the admin's browser is set to.
+
+**v7 checklist — absence, vacation and payroll**
+
+71. A **weekly day off** with no attendance → *Day Off*, **no** absence deduction. Same for a
+    **company holiday** added under Salary & Rules.
+72. A day covered by **approved vacation** → *Vacation*, **no** absence deduction. An approved
+    **rest day** → likewise.
+73. A scheduled working day with no attendance and no cover → *Absent*, deducted at
+    `salary ÷ scheduled working days` (shown in full in the breakdown).
+74. **Admin → Payroll** → pick a month → every employee shows base, working days, present,
+    late days, late minutes, late deduction, absence days, absence deduction, permissions,
+    other, total deductions and net salary.
+75. **Net salary = base − total deductions.** With a 6000 EGP base, 30 EGP of lateness and one
+    absent day at 260.87 EGP, the row reads **5,709.13 EGP**.
+76. **Breakdown** → a dated line per late day (*"Sep 3 — 20 billable minutes → 20 EGP"*), per
+    absence, per permission and per manual deduction, plus a day-by-day table.
+77. **Idempotence** — refresh Payroll ten times, reopen the breakdown, switch months and come
+    back: **the figures never change and no deduction is duplicated.** (Nothing is written on
+    load; `ta_payroll()` derives the month every call.)
+78. **Add another deduction** with the *same label* twice → the amount is **updated**, not
+    added twice (unique on employee + month + label).
+79. **Employee → More → My Salary & Schedule** → their shift, grace period, days off, monthly
+    salary, each deduction with its reason, and the current estimated net salary.
+80. `rpc/ta_payroll` with **another employee's id** from an employee session → *"You can only
+    view your own payroll"*. `PATCH /rest/v1/ta_salary_rules` from any session, employee or
+    admin → **42501 permission denied**. `rpc/ta_set_salary_rules` from an employee → *"Only
+    admins can change salary and attendance rules"*.
+
+**v7 checklist — leave permissions**
+
+81. **Employee → Leave Permissions** → the counter reads `Used 0 / 3`, *3 left this month*.
+82. Submit **#1**, **#2** and **#3** → each is **Approved immediately**, `approval_type` =
+    `automatic`, none of them ever shows as Pending, and the counter walks 1/3 → 2/3 → 3/3.
+83. Submit **#4** → status **Pending Admin Approval** (not rejected), the employee is told an
+    admin must approve it, and every admin gets a notification.
+84. **Admin → Leave Permissions** → #4 appears under *Requires approval* with the employee,
+    date, start, end, duration, reason, status and *beyond their 3 / month*. Approve → the
+    employee is notified and the row reads *Admin approved*; reject → *Rejected* with the note.
+85. **History** (admin) and the employee's own list both group by calendar month with
+    `Used n / 3` per month.
+86. **Monthly reset** — a permission dated in the next month counts against that month:
+    September at 3/3 shows October at **0/3** with nothing to reset by hand.
+87. **Cancel** an approved permission → it returns to the allowance (`Used` drops by one).
+88. An approved permission on a working day: **not** an absence, shown on the employee's
+    calendar day detail, in the admin **Employees** history for that date, on the dashboard's
+    *Approved Leave Permissions Today*, and in the payroll day-by-day table.
+89. With **Deduct pay for approved permissions** OFF (the default) → an approved permission
+    costs **0 EGP**. Switch it on at 0.50 EGP per minute → a 60-minute permission deducts
+    **30 EGP**, and the breakdown says why.
+90. `POST /rest/v1/ta_leave_permissions` from an employee session → **42501**; they cannot
+    create a row at all, let alone one with `status = 'approved'`.
+    `rpc/ta_review_permission` from an employee → *"Only admins can decide leave permissions"*.
+91. **Vacation still works end to end** — request, manager + admin approval, balance deduction,
+    remaining days, weekend changes and rest days are all unchanged by this migration.
 ```
 
-**Verified already:** the app boots with zero console errors, all 20 modules load, the login
+**Verified already:** the app boots with zero console errors, all 38 modules load, the login
 screen renders, and live auth is wired (bad credentials return the correct "Wrong email or
-password" error from Supabase). The only step that must be done in the Supabase dashboard is
-running `db/schema.sql` (step 2b) — DDL can't be executed with the public anon key.
+password" error from Supabase). For v7 specifically: the clock-out verification word was
+exercised in the browser against all six cases in steps 61–62 and behaves exactly as
+specified, and the new **Payroll**, **Salary & Rules**, **Leave Permissions**, **My Salary**
+and employee **Leave Permissions** screens were each rendered against representative data on
+desktop and mobile. What could **not** be exercised without the live database is the SQL
+itself — `db/schema-v7.sql` has to be run in the Supabase dashboard (step 2b8), because DDL
+can't be executed with the public anon key, and steps 65–91 need it in place.

@@ -1,7 +1,10 @@
-import { Profiles, Attendance, Leaves } from '../../lib/data.js?v=20260830b';
-import { el, icon, avatar, pill, ring, emptyState } from '../../lib/ui.js?v=20260830b';
-import { todayYMD, fmtTime, minToDur } from '../../lib/time.js?v=20260830b';
-import { POLL_MS } from '../../../config.js?v=20260830b';
+import { Profiles, Attendance, Leaves, Permissions } from '../../lib/data.js?v=20260903a';
+import { el, icon, avatar, pill, ring, emptyState } from '../../lib/ui.js?v=20260903a';
+import { todayYMD, fmtTime, minToDur } from '../../lib/time.js?v=20260903a';
+// Aliased: liveRow() below has its own local `mins` (elapsed minutes), and two
+// bindings called `mins` in one module is a trap for the next reader.
+import { hm12, mins as fmtMins } from '../../lib/money.js?v=20260903a';
+import { POLL_MS } from '../../../config.js?v=20260903a';
 
 export default async function adminDashboard({ navigate, refresh }) {
   const screen = el('div.fade-up');
@@ -16,9 +19,18 @@ export default async function adminDashboard({ navigate, refresh }) {
   liveWrap.append(liveList);
   screen.append(liveWrap);
 
+  // Approved leave permissions for today — time out that is authorised, so it
+  // must never be read as an absence or as an unexplained early finish.
+  const permWrap = el('div', { style: { marginTop: '26px' } });
+  permWrap.append(el('div.section-h', el('h2', 'Approved Leave Permissions Today')));
+  const permList = el('div.list');
+  permWrap.append(permList);
+  screen.append(permWrap);
+
   async function load() {
-    const [people, today, pending] = await Promise.all([
+    const [people, today, pending, perms] = await Promise.all([
       Profiles.all(), Attendance.range(todayYMD(), todayYMD()), Leaves.pending(),
+      Permissions.approvedOn(todayYMD()).catch(() => []),   // pre-v7 database
     ]);
     const employees = people.filter(p => p.role === 'employee');
     const byEmp = Object.fromEntries(today.map(r => [r.employee_id, r]));
@@ -32,6 +44,7 @@ export default async function adminDashboard({ navigate, refresh }) {
       kpi('clock', 'teal', working, 'Currently Working'),
       kpi('alert', 'warn', missing, 'Not Clocked In'),
       kpi('calplus', 'danger', pending.length, 'Pending Leaves'),
+      kpi('inbox', 'warn', perms.length, 'On Permission Today'),
       kpi('users', 'teal', employees.length, 'Total Team'),
     );
 
@@ -43,6 +56,14 @@ export default async function adminDashboard({ navigate, refresh }) {
       liveList.append(el('div.card', emptyState('clock', 'Nobody is clocked in right now', 'Active employees will appear here in real time.')));
     } else {
       for (const r of workingRows) liveList.append(liveRow(r));
+    }
+
+    permList.replaceChildren();
+    if (!perms.length) {
+      permList.append(el('div.card', emptyState('checkcircle', 'Nobody is out on permission today',
+        'Approved leave permissions for today would appear here.')));
+    } else {
+      for (const lp of perms) permList.append(permissionRow(lp));
     }
   }
 
@@ -71,6 +92,22 @@ function kpi(ic, tone, value, label, ringVal, ringMax) {
   }
   c.append(el('div', el('div.v', String(value)), el('div.k', label)));
   return c;
+}
+
+// One approved leave permission. Deliberately labelled "Approved permission"
+// rather than a leave/absence word — this time out is authorised and costs
+// nothing unless a permission deduction is switched on for that employee.
+function permissionRow(lp) {
+  const p = lp.ta_profiles || {};
+  const row = el('div.lrow');
+  row.append(avatar(p, 'sm'));
+  row.append(el('div.grow',
+    el('div.name', p.full_name || 'Employee'),
+    el('div.meta', `${hm12(lp.start_time)} – ${hm12(lp.end_time)} · ${fmtMins(lp.duration_minutes)}`
+      + (lp.reason ? ` · ${lp.reason}` : ''))));
+  row.append(el('span.pill.pill--approved',
+    lp.approval_type === 'admin' ? 'Admin approved' : 'Approved permission'));
+  return row;
 }
 
 export function liveRow(r) {

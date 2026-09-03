@@ -1,6 +1,7 @@
-import { Attendance, OffDays, Leaves, leaveStage, STAGE_LABEL, STAGE_PILL } from '../../lib/data.js?v=20260830b';
-import { el, icon, pill, pageHead } from '../../lib/ui.js?v=20260830b';
-import { ymd, todayYMD, fmtHM, minToHM, fmtLongDate, fmtShortDate, MONTHS, DOW } from '../../lib/time.js?v=20260830b';
+import { Attendance, OffDays, Leaves, Permissions, leaveStage, STAGE_LABEL, STAGE_PILL } from '../../lib/data.js?v=20260903a';
+import { el, icon, pill, pageHead } from '../../lib/ui.js?v=20260903a';
+import { ymd, todayYMD, fmtHM, minToHM, fmtLongDate, fmtShortDate, MONTHS, DOW } from '../../lib/time.js?v=20260903a';
+import { hm12, mins } from '../../lib/money.js?v=20260903a';
 
 export default async function calendarPage({ profile, navigate }) {
   const now = new Date();
@@ -43,15 +44,25 @@ export default async function calendarPage({ profile, navigate }) {
   screen.append(detail);
 
   let leaveByDate = {};
+  // Approved leave permissions, keyed by day. A permission is time out DURING
+  // a working day, so it annotates the day rather than colouring it.
+  let permsByDate = {};
 
   async function draw() {
     moLabel.textContent = `${MONTHS[month]} ${year}`;
     grid.replaceChildren();
-    const [records, leaves] = await Promise.all([
+    const [records, leaves, perms] = await Promise.all([
       Attendance.forMonth(profile.id, year, month),
       Leaves.forMonth(profile.id, year, month).catch(() => []),
+      Permissions.forMonth(profile.id, year, month).catch(() => []),   // pre-v7 database
     ]);
     const byDate = Object.fromEntries(records.map(r => [r.work_date, r]));
+
+    permsByDate = {};
+    for (const lp of perms) {
+      if (lp.status !== 'approved') continue;
+      (permsByDate[lp.permission_date] ||= []).push(lp);
+    }
 
     // Expand each request across the days it covers. Approved wins over
     // pending when two requests somehow touch the same day.
@@ -128,6 +139,17 @@ export default async function calendarPage({ profile, navigate }) {
       if (leaveStage(lv) !== 'approved') {
         box.append(el('p.tiny.muted', { style: { marginTop: '6px' } },
           'Not yet approved — this day is still provisional.'));
+      }
+      detail.append(box);
+    }
+
+    const lps = permsByDate[date] || [];
+    if (lps.length) {
+      const box = el('div', { style: { marginBottom: rec ? '14px' : '0' } });
+      box.append(el('div.small.b', `Approved leave permission · ${mins(lps.reduce((s, l) => s + l.duration_minutes, 0))}`));
+      for (const lp of lps) {
+        box.append(el('div.tiny.muted', { style: { marginTop: '3px' } },
+          `${hm12(lp.start_time)} – ${hm12(lp.end_time)}` + (lp.reason ? ` · ${lp.reason}` : '')));
       }
       detail.append(box);
     }

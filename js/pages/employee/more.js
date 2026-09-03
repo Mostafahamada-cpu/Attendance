@@ -1,8 +1,8 @@
-import { auth } from '../../lib/supabase.js?v=20260830b';
-import { Notifs } from '../../lib/data.js?v=20260830b';
-import { el, icon, avatar, pageHead } from '../../lib/ui.js?v=20260830b';
-import { modal, confirmDialog } from '../../lib/toast.js?v=20260830b';
-import { securityCard } from '../shared/security.js?v=20260830b';
+import { auth } from '../../lib/supabase.js?v=20260903a';
+import { Notifs } from '../../lib/data.js?v=20260903a';
+import { el, icon, avatar, pageHead } from '../../lib/ui.js?v=20260903a';
+import { modal, confirmDialog } from '../../lib/toast.js?v=20260903a';
+import { securityCard } from '../shared/security.js?v=20260903a';
 
 export default async function morePage({ profile, navigate }) {
   const unread = (await Notifs.unread().catch(() => [])).length;
@@ -32,6 +32,10 @@ export default async function morePage({ profile, navigate }) {
   menu1.append(
     item('user', 'My Profile', () => showProfile(profile)),
     item('calplus', 'My Leaves', () => navigate('#/leaves')),
+    // Leave Permission is NOT vacation — it sits beside My Leaves rather than
+    // inside it so the two are never confused.
+    item('clock', 'Leave Permissions', () => navigate('#/permissions')),
+    item('wallet', 'My Salary & Schedule', () => navigate('#/salary')),
     item('moon', 'Rest Days', () => navigate('#/rest-days')),
     item('swap', 'My Weekend', () => navigate('#/weekend')),
     item('calendar', 'My Attendance', () => navigate('#/attendance')),

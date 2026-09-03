@@ -1,8 +1,10 @@
-import { Profiles, Attendance, OffDays, Balances } from '../../lib/data.js?v=20260830b';
-import { el, icon, avatar, pill, emptyState } from '../../lib/ui.js?v=20260830b';
-import { toastOk, toastErr } from '../../lib/toast.js?v=20260830b';
-import { ymd, todayYMD, fmtShortDate, fmtHM, minToHM, minToDur, MONTHS, DOW } from '../../lib/time.js?v=20260830b';
-import { editVacationBalance, LEAVE_TYPES } from './balances.js?v=20260830b';
+import { Profiles, Attendance, OffDays, Balances, SalaryRules, Shifts, Permissions } from '../../lib/data.js?v=20260903a';
+import { el, icon, avatar, pill, emptyState } from '../../lib/ui.js?v=20260903a';
+import { toastOk, toastErr } from '../../lib/toast.js?v=20260903a';
+import { ymd, todayYMD, fmtShortDate, fmtHM, minToHM, minToDur, MONTHS, DOW } from '../../lib/time.js?v=20260903a';
+import { egp, hm12, mins } from '../../lib/money.js?v=20260903a';
+import { editVacationBalance, LEAVE_TYPES } from './balances.js?v=20260903a';
+import { editRules } from './salary-rules.js?v=20260903a';
 
 export default async function adminEmployees({ refresh } = {}) {
   const people = (await Profiles.all()).filter(p => p.role === 'employee');
@@ -64,10 +66,13 @@ export default async function adminEmployees({ refresh } = {}) {
     document.body.append(modalScrim);
 
     const now = new Date();
-    const [recs, off, bal] = await Promise.all([
+    const [recs, off, bal, rules, shifts, perms] = await Promise.all([
       Attendance.forMonth(p.id, now.getFullYear(), now.getMonth()),
       OffDays.mine(p.id),
       Balances.forEmployee(p.id).catch(() => []),
+      SalaryRules.forEmployee(p.id).catch(() => null),   // pre-v7 database
+      Shifts.all().catch(() => []),
+      Permissions.forMonth(p.id, now.getFullYear(), now.getMonth()).catch(() => []),
     ]);
     panel.lastChild.remove();
 
@@ -96,6 +101,11 @@ export default async function adminEmployees({ refresh } = {}) {
     //  there is one code path and one set of guard rails.
     panel.append(vacationCard(p, bal, close, refresh));
 
+    // ── Salary & attendance rules ────────────────────────────────────────
+    //  Read-only here; the button opens the same dialog the Salary & Rules
+    //  screen uses, so there is one code path and one set of guard rails.
+    if (rules) panel.append(rulesCard(p, rules, shifts, offSet, close, refresh));
+
     const stats = el('div.stat-3', { style: { marginBottom: '18px' } });
     stats.append(mini('Present', present), mini('Absent', absent), mini('Avg Hrs', recs.length ? minToHM(totalMin / recs.length) : '00:00'));
     panel.append(el('div.card-sub.b', { style: { marginBottom: '8px' } }, `${MONTHS[now.getMonth()]} ${now.getFullYear()}`), stats);
@@ -104,15 +114,30 @@ export default async function adminEmployees({ refresh } = {}) {
     panel.append(el('div.section-h', el('h2', { style: { fontSize: '15px' } }, 'Weekly Pattern')));
     panel.append(weeklyPattern(recs, offSet));
 
-    // History list
+    // History list — an approved leave permission is shown on the day it
+    // belongs to, so authorised time out is never mistaken for a short day.
+    const permsByDate = {};
+    for (const lp of perms) {
+      if (lp.status !== 'approved') continue;
+      (permsByDate[lp.permission_date] ||= []).push(lp);
+    }
+
     panel.append(el('div.section-h', el('h2', { style: { fontSize: '15px' } }, 'Recent History')));
     if (!recs.length) panel.append(emptyState('calendar', 'No records this month'));
     else {
       const list = el('div.list');
       [...recs].reverse().slice(0, 12).forEach(r => {
         const row = el('div.lrow');
-        row.append(el('div.grow', el('div.name', fmtShortDate(r.work_date)), el('div.meta', `${fmtHM(r.clock_in)} – ${r.clock_out ? fmtHM(r.clock_out) : '—'}`)));
-        row.append(el('div.small.b', minToDur(r.total_minutes)), pill(r.status === 'completed' ? 'present' : 'working'));
+        const lps = permsByDate[r.work_date] || [];
+        const meta = el('div.meta', `${fmtHM(r.clock_in)} – ${r.clock_out ? fmtHM(r.clock_out) : '—'}`
+          + (lps.length ? ` · permission ${lps.map(l => `${hm12(l.start_time)}–${hm12(l.end_time)}`).join(', ')}` : ''));
+        row.append(el('div.grow', el('div.name', fmtShortDate(r.work_date)), meta));
+        row.append(el('div.small.b', minToDur(r.total_minutes)));
+        if (lps.length) {
+          row.append(el('span.pill.pill--working', { style: { height: '22px' } },
+            mins(lps.reduce((s, l) => s + l.duration_minutes, 0))));
+        }
+        row.append(pill(r.status === 'completed' ? 'present' : 'working'));
         list.append(row);
       });
       panel.append(list);
@@ -156,6 +181,44 @@ function vacationCard(p, bal, closeDetail, refresh) {
     grid.append(el('span.pill.pill--present', { style: { height: '24px' } },
       `${label} ${b ? `${b.remaining_days}/${b.total_days}` : '—'}`));
   }
+  card.append(grid);
+  return card;
+}
+
+// Salary & attendance rules at a glance. The figures come straight from
+// ta_salary_rules; the button opens the shared editRules() dialog, which is
+// the only way any of them can change.
+function rulesCard(p, rules, shifts, offSet, closeDetail, refresh) {
+  const sh = shifts.find(s => s.id === rules.shift_id);
+  const start = rules.shift_start_override || sh?.start_time;
+  const end = rules.shift_end_override || sh?.end_time;
+
+  const card = el('div', {
+    style: { padding: '13px 15px', background: 'var(--surface-2)', borderRadius: 'var(--r)', marginBottom: '18px' },
+  });
+  const head = el('div.row.between', { style: { gap: '12px', marginBottom: '10px' } });
+  head.append(el('div.grow',
+    el('div.small.b', 'Salary & attendance rules'),
+    el('div.tiny.muted', `${egp(rules.monthly_salary)} · ${sh?.name || 'Custom hours'} `
+      + `${hm12(start)} – ${hm12(end)}`)));
+  const edit = el('button.btn.btn--primary.btn--sm', { style: { flex: 'none' } }, 'Edit rules');
+  edit.addEventListener('click', () => {
+    closeDetail?.();
+    editRules({ person: p, rules, shifts, off: offSet, onSaved: () => refresh?.() });
+  });
+  head.append(edit);
+  card.append(head);
+
+  const grid = el('div.row.wrap', { style: { gap: '8px' } });
+  grid.append(
+    el('span.pill.pill--present', { style: { height: '24px' } }, `${rules.grace_minutes} min grace`),
+    el('span.pill.pill--present', { style: { height: '24px' } }, `${egp(rules.late_deduction_per_minute)} / late min`),
+    el('span.pill.pill--present', { style: { height: '24px' } },
+      rules.absence_basis === 'fixed_days' ? `Absence ÷ ${rules.absence_fixed_days} days` : 'Absence ÷ scheduled days'),
+    el('span.pill.pill--present', { style: { height: '24px' } }, `${rules.permissions_per_month} permissions / month`),
+    el('span.pill.pill--' + (rules.is_active === false ? 'denied' : 'approved'), { style: { height: '24px' } },
+      rules.is_active === false ? 'Inactive' : 'Active'),
+  );
   card.append(grid);
   return card;
 }

@@ -1,31 +1,36 @@
 // RingRoad Attendance — entry point: session, routing, app shells.
-import { auth, getSession, setLogoutHandler } from './lib/supabase.js?v=20260830b';
-import { Profiles, Notifs } from './lib/data.js?v=20260830b';
-import { el, icon, avatar, mount } from './lib/ui.js?v=20260830b';
-import { toastErr } from './lib/toast.js?v=20260830b';
-import { SUPABASE_URL } from '../config.js?v=20260830b';
+import { auth, getSession, setLogoutHandler } from './lib/supabase.js?v=20260903a';
+import { Profiles, Notifs } from './lib/data.js?v=20260903a';
+import { el, icon, avatar, mount } from './lib/ui.js?v=20260903a';
+import { toastErr } from './lib/toast.js?v=20260903a';
+import { SUPABASE_URL } from '../config.js?v=20260903a';
 
-import loginPage from './pages/login.js?v=20260830b';
-import empHome from './pages/employee/home.js?v=20260830b';
-import empApply from './pages/employee/apply-leave.js?v=20260830b';
-import empLeaves from './pages/employee/my-leaves.js?v=20260830b';
-import empCalendar from './pages/employee/calendar.js?v=20260830b';
-import empNotifs from './pages/employee/notifications.js?v=20260830b';
-import empChat from './pages/employee/chat.js?v=20260830b';
-import empMore from './pages/employee/more.js?v=20260830b';
-import empWeekend from './pages/employee/weekend.js?v=20260830b';
-import empRest from './pages/employee/rest-days.js?v=20260830b';
-import empApprovals from './pages/employee/approvals.js?v=20260830b';
-import admDashboard from './pages/admin/dashboard.js?v=20260830b';
-import admLeaves from './pages/admin/leaves.js?v=20260830b';
-import admEmployees from './pages/admin/employees.js?v=20260830b';
-import admBalances from './pages/admin/balances.js?v=20260830b';
-import admOffdays from './pages/admin/offdays.js?v=20260830b';
-import admAnalytics from './pages/admin/analytics.js?v=20260830b';
-import admWeekend from './pages/admin/weekend.js?v=20260830b';
-import admRest from './pages/admin/rest-days.js?v=20260830b';
-import admGeofence from './pages/admin/geofence.js?v=20260830b';
-import admAccount from './pages/admin/account.js?v=20260830b';
+import loginPage from './pages/login.js?v=20260903a';
+import empHome from './pages/employee/home.js?v=20260903a';
+import empApply from './pages/employee/apply-leave.js?v=20260903a';
+import empLeaves from './pages/employee/my-leaves.js?v=20260903a';
+import empCalendar from './pages/employee/calendar.js?v=20260903a';
+import empNotifs from './pages/employee/notifications.js?v=20260903a';
+import empChat from './pages/employee/chat.js?v=20260903a';
+import empMore from './pages/employee/more.js?v=20260903a';
+import empWeekend from './pages/employee/weekend.js?v=20260903a';
+import empRest from './pages/employee/rest-days.js?v=20260903a';
+import empApprovals from './pages/employee/approvals.js?v=20260903a';
+import empPermissions from './pages/employee/permissions.js?v=20260903a';
+import empSalary from './pages/employee/salary.js?v=20260903a';
+import admDashboard from './pages/admin/dashboard.js?v=20260903a';
+import admLeaves from './pages/admin/leaves.js?v=20260903a';
+import admEmployees from './pages/admin/employees.js?v=20260903a';
+import admBalances from './pages/admin/balances.js?v=20260903a';
+import admOffdays from './pages/admin/offdays.js?v=20260903a';
+import admAnalytics from './pages/admin/analytics.js?v=20260903a';
+import admWeekend from './pages/admin/weekend.js?v=20260903a';
+import admRest from './pages/admin/rest-days.js?v=20260903a';
+import admGeofence from './pages/admin/geofence.js?v=20260903a';
+import admAccount from './pages/admin/account.js?v=20260903a';
+import admSalaryRules from './pages/admin/salary-rules.js?v=20260903a';
+import admPayroll from './pages/admin/payroll.js?v=20260903a';
+import admPermissions from './pages/admin/permissions.js?v=20260903a';
 
 const appRoot = document.getElementById('app');
 export const state = { profile: null, unread: 0 };
@@ -35,12 +40,17 @@ const EMP_ROUTES = {
   home: empHome, apply: empApply, leaves: empLeaves, attendance: empCalendar,
   notifications: empNotifs, chat: empChat, more: empMore,
   weekend: empWeekend, 'rest-days': empRest, approvals: empApprovals,
+  // v7 — time out during a working day, and your own pay. Both are read-only
+  // views of server-calculated figures; neither can edit a rule.
+  permissions: empPermissions, salary: empSalary,
 };
 const ADM_ROUTES = {
   admin: admDashboard, 'admin/leaves': admLeaves, 'admin/employees': admEmployees,
   'admin/balances': admBalances, 'admin/offdays': admOffdays, 'admin/analytics': admAnalytics,
   'admin/weekend': admWeekend, 'admin/rest-days': admRest, 'admin/geofence': admGeofence,
   'admin/account': admAccount,
+  'admin/permissions': admPermissions, 'admin/salary-rules': admSalaryRules,
+  'admin/payroll': admPayroll,
 };
 
 export function navigate(hash) { location.hash = hash; }
@@ -61,7 +71,10 @@ function empNav() {
 const ADM_NAV = [
   { r: 'admin', icon: 'grid', label: 'Dashboard' },
   { r: 'admin/leaves', icon: 'calplus', label: 'Leave Requests' },
+  { r: 'admin/permissions', icon: 'clock', label: 'Leave Permissions' },
   { r: 'admin/employees', icon: 'users', label: 'Employees' },
+  { r: 'admin/salary-rules', icon: 'settings', label: 'Salary & Rules' },
+  { r: 'admin/payroll', icon: 'wallet', label: 'Payroll' },
   { r: 'admin/balances', icon: 'briefcase', label: 'Vacation Balances' },
   { r: 'admin/offdays', icon: 'calendar', label: 'Off-Days' },
   { r: 'admin/weekend', icon: 'swap', label: 'Weekend Changes' },

@@ -82,6 +82,7 @@ const ICONS = {
   arrowR: '<path d="M5 12h14M13 6l6 6-6 6"/>',
   minus: '<path d="M5 12h14"/>',
   inbox: '<path d="M3 13h4l2 3h6l2-3h4"/><path d="M5.5 5h13l2.5 8v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5Z"/>',
+  wallet: '<path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H18a2 2 0 0 1 2 2v1"/><rect x="3" y="8.5" width="18" height="11.5" rx="2.5"/><path d="M16.5 14.2h3.5v3h-3.5a1.5 1.5 0 0 1 0-3Z"/>',
 };
 export function icon(name, cls = '') {
   const body = ICONS[name] || ICONS.info;

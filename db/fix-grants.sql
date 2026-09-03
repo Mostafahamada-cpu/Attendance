@@ -74,3 +74,32 @@ do $$ begin
 exception when undefined_table then
   raise notice 'v2 tables not found — run db/schema-v2.sql first.';
 end $$;
+
+-- ── v7 tables (db/schema-v7.sql) ────────────────────────────────────────────
+--  Salary, payroll and leave permissions. SELECT-only for `authenticated`, and
+--  that includes admins: every write goes through an admin-gated SECURITY
+--  DEFINER RPC. Granting write here would undo what the migration closed —
+--  PATCHing your own salary or grace period, or INSERTing a leave permission
+--  straight in as `approved` so the 3-per-month rule never runs. The REVOKE is
+--  what makes this file safe to re-run after somebody has "helpfully" added a
+--  grant by hand.
+do $$ begin
+  grant select on
+    public.ta_shifts, public.ta_holidays, public.ta_salary_rules,
+    public.ta_payroll_adjustments, public.ta_leave_permissions
+  to authenticated;
+  revoke insert, update, delete on
+    public.ta_shifts, public.ta_holidays, public.ta_salary_rules,
+    public.ta_payroll_adjustments, public.ta_leave_permissions
+  from authenticated;
+exception when undefined_table then
+  raise notice 'v7 tables not found — run db/schema-v7.sql first.';
+end $$;
+
+-- Expect all FALSE:
+select
+  has_table_privilege('authenticated','public.ta_salary_rules','UPDATE')       as salary_update,
+  has_table_privilege('authenticated','public.ta_salary_rules','INSERT')       as salary_insert,
+  has_table_privilege('authenticated','public.ta_leave_permissions','INSERT')  as perm_insert,
+  has_table_privilege('authenticated','public.ta_leave_permissions','UPDATE')  as perm_update,
+  has_table_privilege('authenticated','public.ta_payroll_adjustments','INSERT') as payadj_insert;

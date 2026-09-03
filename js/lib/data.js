@@ -1,6 +1,6 @@
 // Domain data access — all ta_* tables. Thin wrappers over supabase db.
-import { db, userId } from './supabase.js?v=20260830b';
-import { todayYMD, ymd } from './time.js?v=20260830b';
+import { db, userId } from './supabase.js?v=20260903a';
+import { todayYMD, ymd } from './time.js?v=20260903a';
 
 // ---- Profiles -------------------------------------------------------------
 export const Profiles = {
@@ -225,4 +225,151 @@ export const Notifs = {
   unread: (empId = userId()) => db.list('ta_notifications', `employee_id=eq.${empId}&is_read=eq.false&select=id`),
   markRead: (id) => db.update('ta_notifications', `id=eq.${id}`, { is_read: true }),
   markAllRead: (empId = userId()) => db.update('ta_notifications', `employee_id=eq.${empId}&is_read=eq.false`, { is_read: true }),
+};
+
+// ---- Work shifts ----------------------------------------------------------
+// Reference data: everyone reads it (an employee's schedule card names their
+// shift), only ta_set_shift() can change it.
+export const Shifts = {
+  all: () => db.list('ta_shifts', 'select=*&order=sort_order.asc'),
+  active: () => db.list('ta_shifts', 'is_active=is.true&select=*&order=sort_order.asc'),
+  save: (id, { name = null, start = null, end = null, active = null }) => db.rpc('ta_set_shift',
+    { p_shift: id, p_name: name, p_start: start, p_end: end, p_active: active }),
+};
+
+// ---- Salary & attendance rules -------------------------------------------
+// One row per employee, read-only over PostgREST for EVERYONE including admins
+// (db/schema-v7.sql revokes the write grants and creates no write policy). An
+// admin changes a rule through ta_set_salary_rules(), which re-checks every
+// bound and writes the weekly days off into the existing ta_weekly_off_days
+// table rather than duplicating the schedule.
+//
+// Weekly days off are NOT a column here — read them with OffDays.mine(id).
+export const SalaryRules = {
+  mine: (empId = userId()) => db.one('ta_salary_rules', `employee_id=eq.${empId}&select=*`),
+  forEmployee: (empId) => db.one('ta_salary_rules', `employee_id=eq.${empId}&select=*`),
+  all: () => db.list('ta_salary_rules', 'select=*'),
+  // Every field is optional: omit one and the stored value is kept.
+  // `offDays` is the ONLY way to change the schedule from this screen; pass
+  // null to leave it alone. `clearOverrides` drops the per-employee shift
+  // times and the daily late cap back to the shift's own hours.
+  save: (empId, p = {}) => db.rpc('ta_set_salary_rules', {
+    p_employee: empId,
+    p_monthly_salary: nn(p.salary),
+    p_shift: p.shiftId ?? null,
+    p_grace: nn(p.grace),
+    p_late_per_minute: nn(p.latePerMinute),
+    p_absence_basis: p.absenceBasis ?? null,
+    p_absence_fixed_days: nn(p.absenceFixedDays),
+    p_absence_multiplier: nn(p.absenceMultiplier),
+    p_off_days: p.offDays ?? null,
+    p_is_active: p.isActive ?? null,
+    p_shift_start: p.shiftStart ?? null,
+    p_shift_end: p.shiftEnd ?? null,
+    p_late_cap: nn(p.lateCap),
+    p_clear_overrides: !!p.clearOverrides,
+    p_note: p.note ?? null,
+    p_permissions_per_month: nn(p.permissionsPerMonth),
+    p_permission_deduction_enabled: p.permissionDeductionEnabled ?? null,
+    p_permission_deduction_mode: p.permissionDeductionMode ?? null,
+    p_permission_deduction_rate: nn(p.permissionDeductionRate),
+  }),
+};
+
+// A blank input must reach the RPC as null (= "leave it alone"), never as NaN.
+function nn(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// ---- Company holidays -----------------------------------------------------
+export const Holidays = {
+  all: () => db.list('ta_holidays', 'select=*&order=holiday_date.asc'),
+  forYear: (y) => db.list('ta_holidays',
+    `holiday_date=gte.${y}-01-01&holiday_date=lte.${y}-12-31&select=*&order=holiday_date.asc`),
+  set: (date, name) => db.rpc('ta_set_holiday', { p_date: date, p_name: name || 'Holiday' }),
+  remove: (date) => db.rpc('ta_delete_holiday', { p_date: date }),
+};
+
+// ---- Payroll --------------------------------------------------------------
+// Derived, never stored: ta_payroll() recomputes the month from attendance,
+// leave, permissions, rest days, off days and holidays on every call. Calling
+// it twice can therefore never produce a second deduction — there is nothing
+// to duplicate. The only stored money rows are the manual "other deductions"
+// below, which are keyed uniquely on (employee, month, label).
+//
+// `month` is 0-based here to match Date#getMonth() and the rest of this app;
+// the RPC takes 1-12, so it is converted at the boundary.
+export const Payroll = {
+  forEmployee: (empId, y, month) => db.rpc('ta_payroll',
+    { p_employee: empId, p_year: y, p_month: month + 1 }),
+  mine: (y, month) => db.rpc('ta_payroll',
+    { p_employee: userId(), p_year: y, p_month: month + 1 }),
+  all: (y, month, includeInactive = false) => db.rpc('ta_payroll_all',
+    { p_year: y, p_month: month + 1, p_include_inactive: !!includeInactive }),
+  // Re-sending the same label for the same month UPDATES that deduction
+  // instead of adding a second one.
+  setDeduction: (empId, y, month, label, amount, note) => db.rpc('ta_set_payroll_adjustment',
+    { p_employee: empId, p_year: y, p_month: month + 1, p_label: label, p_amount: amount, p_note: note || null }),
+  removeDeduction: (id) => db.rpc('ta_delete_payroll_adjustment', { p_id: id }),
+  setDefaults: ({ timezone = null, salary = null, grace = null, latePerMinute = null, permissions = null }) =>
+    db.rpc('ta_set_payroll_defaults', {
+      p_timezone: timezone, p_salary: nn(salary), p_grace: nn(grace),
+      p_late_per_minute: nn(latePerMinute), p_permissions: nn(permissions),
+    }),
+};
+
+// ---- Monthly leave permissions -------------------------------------------
+// Permission to step out DURING a working day — NOT vacation. Vacation lives
+// in ta_leave_requests, deducts a balance and needs two-stage approval; a
+// permission covers hours inside one day, deducts nothing, and the first three
+// of each calendar month are approved the instant they are submitted.
+//
+// The status is decided by ta_request_permission() in the database, from a
+// count it does itself. The client cannot ask for "approved" — it cannot
+// INSERT into the table at all.
+export const Permissions = {
+  mine: (empId = userId()) => db.list('ta_leave_permissions',
+    `employee_id=eq.${empId}&select=*&order=permission_date.desc,start_time.desc`),
+  forMonth: (empId, y, m) => {
+    const from = ymd(new Date(y, m, 1)), to = ymd(new Date(y, m + 1, 0));
+    return db.list('ta_leave_permissions',
+      `employee_id=eq.${empId}&permission_date=gte.${from}&permission_date=lte.${to}`
+      + '&select=*&order=permission_date.asc,start_time.asc');
+  },
+  // ta_leave_permissions has two FKs to ta_profiles (employee_id, decided_by),
+  // so every embed must name the one it means.
+  all: () => db.list('ta_leave_permissions',
+    'select=*,ta_profiles!employee_id(full_name,department,position,avatar_url),'
+    + 'decided:ta_profiles!decided_by(full_name)&order=permission_date.desc,created_at.desc&limit=400'),
+  pending: () => db.list('ta_leave_permissions',
+    'status=eq.pending&select=*,ta_profiles!employee_id(full_name,department,position,avatar_url)'
+    + '&order=permission_date.asc,start_time.asc'),
+  // Every approved permission on one date — used by the admin attendance view.
+  approvedOn: (date) => db.list('ta_leave_permissions',
+    `permission_date=eq.${date}&status=eq.approved`
+    + '&select=*,ta_profiles!employee_id(full_name,department,avatar_url)&order=start_time.asc'),
+  // { limit, used, pending, remaining, next_requires_approval }
+  usage: (empId = null, y = null, m = null) => db.rpc('ta_permission_usage',
+    { p_employee: empId, p_year: y, p_month: m == null ? null : m + 1 }),
+  request: ({ date, start, end, reason }) => db.rpc('ta_request_permission',
+    { p_date: date, p_start: start, p_end: end, p_reason: reason || null }),
+  review: (id, decision, note) => db.rpc('ta_review_permission',
+    { p_id: id, p_decision: decision, p_note: note || null }),
+  cancel: (id) => db.rpc('ta_cancel_permission', { p_id: id }),
+};
+
+export const PERMISSION_LABEL = {
+  approved: 'Approved',
+  pending: 'Pending Admin Approval',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled',
+};
+// Reuses the existing pill palette — no new status colours.
+export const PERMISSION_PILL = {
+  approved: 'approved',
+  pending: 'pending',
+  rejected: 'denied',
+  cancelled: 'plain',
 };

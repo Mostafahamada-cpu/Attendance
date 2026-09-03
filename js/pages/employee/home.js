@@ -1,17 +1,19 @@
-import { Attendance, Balances, Settings } from '../../lib/data.js?v=20260830b';
-import { el, icon, avatar, ring } from '../../lib/ui.js?v=20260830b';
-import { toastOk, toastErr, confirmDialog, modal } from '../../lib/toast.js?v=20260830b';
-import { fmtTime, fmtHM, fmtLongDate, minToHM, minToDur } from '../../lib/time.js?v=20260830b';
+import { Attendance, Balances, Settings, Permissions } from '../../lib/data.js?v=20260903a';
+import { el, icon, avatar, ring } from '../../lib/ui.js?v=20260903a';
+import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260903a';
+import { verifyClockOut } from '../../lib/verify.js?v=20260903a';
+import { fmtTime, fmtHM, fmtLongDate, minToHM, minToDur } from '../../lib/time.js?v=20260903a';
 import {
   getPositionWithFallback, evaluate, fmtDistance, permissionState,
   isSupported, isSecureOrigin, GeoError, DEFAULT_GEOFENCE,
-} from '../../lib/geo.js?v=20260830b';
+} from '../../lib/geo.js?v=20260903a';
 
 export default async function empHome({ profile, navigate, refresh }) {
-  const [today, balances, cfg] = await Promise.all([
+  const [today, balances, cfg, permUsage] = await Promise.all([
     Attendance.today(),
     Balances.mine(),
     Settings.get().catch(() => null),          // pre-v2 database → fall back
+    Permissions.usage().catch(() => null),     // pre-v7 database → hide the card
   ]);
   const geofence = cfg || DEFAULT_GEOFENCE;
 
@@ -208,11 +210,12 @@ export default async function empHome({ profile, navigate, refresh }) {
 
     if (kind === 'out') {
       busy(false);
-      confirmDialog({
-        title: 'Clock out?',
-        message: `You've worked ${minToDur(workedMinutes())} so far. End your workday now?`,
-        confirmLabel: 'Clock Out',
-        onConfirm: () => send(),
+      // Clocking out asks for the verification word first. Everything after it
+      // — the payload, the RPC, the server's own geofence and minute
+      // calculation — is unchanged; the word only decides whether send() runs.
+      verifyClockOut({
+        workedLabel: minToDur(workedMinutes()),
+        onVerified: () => send(),
       });
       return;
     }
@@ -283,13 +286,40 @@ export default async function empHome({ profile, navigate, refresh }) {
   screen.append(sectionHead('Leave Balance', 'View all', () => navigate('#/leaves')));
   screen.append(leaveBalanceCard(balances));
 
+  // ── Leave permissions ─────────────────────────────────────────────────────
+  //  Distinct from the leave balance above: that is whole days of vacation,
+  //  this is permission to step out for an hour or two during a working day.
+  if (permUsage) {
+    screen.append(sectionHead('Leave Permission', 'Request', () => navigate('#/permissions')));
+    const pc = el('div.card');
+    const prow = el('div.row.between', { style: { gap: '12px' } });
+    prow.append(el('div.grow',
+      el('div', { style: { fontSize: '17px', fontWeight: '800' } }, `Used ${permUsage.used} / ${permUsage.limit}`),
+      el('div.small.muted', { style: { marginTop: '3px' } }, permUsage.remaining > 0
+        ? `${permUsage.remaining} left this month — approved instantly`
+        : 'Allowance used — a new request needs admin approval')));
+    prow.append(ring({
+      value: permUsage.remaining, max: permUsage.limit || 1, size: 62, stroke: 7,
+      color: permUsage.remaining > 0 ? 'var(--teal)' : 'var(--warn)',
+      label: String(permUsage.remaining), sub: 'left',
+    }));
+    pc.append(prow);
+    if (permUsage.pending > 0) {
+      pc.append(el('div.pill.pill--pending', { style: { marginTop: '10px' } },
+        `${permUsage.pending} waiting for an admin`));
+    }
+    screen.append(pc);
+  }
+
   // ── Quick actions ─────────────────────────────────────────────────────────
   const quick = el('div.row.wrap', { style: { gap: '12px', marginTop: '16px' } });
   const applyBtn = el('button.btn.btn--primary.grow'); applyBtn.innerHTML = icon('calplus') + '<span>Apply Leave</span>';
   applyBtn.addEventListener('click', () => navigate('#/apply'));
+  const permBtn = el('button.btn.btn--ghost.grow'); permBtn.innerHTML = icon('clock') + '<span>Permission</span>';
+  permBtn.addEventListener('click', () => navigate('#/permissions'));
   const calBtn = el('button.btn.btn--ghost.grow'); calBtn.innerHTML = icon('calendar') + '<span>Calendar</span>';
   calBtn.addEventListener('click', () => navigate('#/attendance'));
-  quick.append(applyBtn, calBtn);
+  quick.append(applyBtn, permBtn, calBtn);
   screen.append(quick);
 
   // live wall clock in greeting
