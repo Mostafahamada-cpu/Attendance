@@ -1,5 +1,5 @@
 import { Profiles, Balances, BalanceLog } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, emptyState } from '../../lib/ui.js?v=20260903a';
+import { el, icon, avatar, emptyState, labelCells } from '../../lib/ui.js?v=20260903a';
 import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260903a';
 import { ago } from '../../lib/time.js?v=20260903a';
 
@@ -94,6 +94,7 @@ export default async function adminBalances({ refresh } = {}) {
       tbody.append(tr);
     }
     table.append(tbody);
+    labelCells(table);
   }
 
   function actionCell(r) {

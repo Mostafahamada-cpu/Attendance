@@ -10,7 +10,7 @@
 // not an admin. Employees have no INSERT or UPDATE grant on the table at all,
 // so a status can only ever be changed from this screen.
 import { Permissions, PERMISSION_LABEL, PERMISSION_PILL } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, emptyState } from '../../lib/ui.js?v=20260903a';
+import { el, icon, avatar, emptyState, labelCells } from '../../lib/ui.js?v=20260903a';
 import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260903a';
 import { fmtShortDate, ago, MONTHS } from '../../lib/time.js?v=20260903a';
 import { hm12, mins } from '../../lib/money.js?v=20260903a';
@@ -144,6 +144,7 @@ export default async function adminPermissions({ refresh } = {}) {
       tbody.append(tr);
     }
     table.append(tbody);
+    labelCells(table);
   }
 
   sInput.addEventListener('input', draw);

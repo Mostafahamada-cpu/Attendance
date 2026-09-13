@@ -8,7 +8,7 @@
 // the breakdown dialog, and even that is keyed uniquely on
 // (employee, month, label) — re-entering the same label edits it in place.
 import { Payroll } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, emptyState } from '../../lib/ui.js?v=20260903a';
+import { el, icon, avatar, emptyState, labelCells } from '../../lib/ui.js?v=20260903a';
 import { toastOk, toastErr, modal, confirmDialog } from '../../lib/toast.js?v=20260903a';
 import { MONTHS, DOW, fmtShortDate, fmtDayMon } from '../../lib/time.js?v=20260903a';
 import { egp, deduction, mins, hm12, dayType, dailyRateExplainer } from '../../lib/money.js?v=20260903a';
@@ -147,6 +147,7 @@ export default async function adminPayroll() {
       tbody.append(tr);
     }
     table.append(tbody);
+    labelCells(table);
   }
 
   prev.addEventListener('click', () => { month--; if (month < 0) { month = 11; year--; } load(); });
@@ -357,6 +358,7 @@ export function breakdownBody(pay, year, month, close, onChanged) {
     dbody.append(tr);
   }
   dtable.append(dbody);
+  labelCells(dtable);
   dwrap.append(dtable);
   box.append(dwrap);
 

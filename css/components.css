@@ -8,7 +8,11 @@
 
 /* Desktop admin shell */
 .app-admin { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
-.admin-main { padding: 26px 30px 40px; max-width: var(--max); width: 100%; }
+.admin-main { padding: 26px 30px 40px; max-width: var(--max); width: 100%;
+  /* A 1fr grid track defaults to min-width:auto, so a wide table used to push
+     this column — and the whole page — past the viewport instead of scrolling
+     inside its own .table-wrap. */
+  min-width: 0; }
 
 /* ---- Top greeting bar ----------------------------------------------------- */
 .topbar { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
@@ -130,12 +134,14 @@
 .botnav { position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--nav-h) + var(--safe-b));
   padding-bottom: var(--safe-b); background: rgba(255,255,255,.92); backdrop-filter: blur(14px);
   border-top: 1px solid var(--line); display: flex; justify-content: space-around; align-items: center; z-index: 40; }
-.botnav a { display: grid; place-items: center; gap: 3px; color: var(--muted); font-size: 10.5px; font-weight: 600;
+.botnav a, .botnav button { display: grid; place-items: center; gap: 3px; color: var(--muted); font-size: 10.5px; font-weight: 600;
   flex: 1; height: 100%; position: relative; }
-.botnav a .ic { width: 24px; height: 24px; transition: transform .18s; }
-.botnav a.on { color: var(--teal); }
-.botnav a.on .ic { transform: translateY(-2px); }
-.botnav a.on::before { content:''; position:absolute; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--teal); }
+.botnav a .ic, .botnav button .ic { width: 24px; height: 24px; transition: transform .18s; }
+.botnav a.on, .botnav button.on { color: var(--teal); }
+.botnav a.on .ic, .botnav button.on .ic { transform: translateY(-2px); }
+.botnav a.on::before, .botnav button.on::before { content:''; position:absolute; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--teal); }
+/* The admin shell's phone navigation — hidden wherever the sidebar is shown. */
+.botnav--admin { display: none; }
 .botnav .fab { flex: 0 0 auto; width: 56px; height: 56px; border-radius: 50%; background: var(--grad-in);
   color: #fff; margin-top: -22px; box-shadow: var(--sh-teal); display: grid; place-content: center; }
 .badge-dot { position: absolute; top: 8px; right: 50%; transform: translateX(16px); min-width: 16px; height: 16px;
@@ -268,6 +274,7 @@ table.tbl tbody tr:hover { background: var(--surface-2); }
 .menu-item:active { background: var(--surface-2); }
 .menu-item .ic { width: 22px; height: 22px; color: var(--teal); }
 .menu-item .chev { margin-left: auto; color: var(--ink-3); }
+.menu-item.on { background: var(--teal-050); color: var(--teal-700); }
 .menu-item.danger { color: var(--danger); }
 .menu-item.danger .ic { color: var(--danger); }
 
@@ -295,13 +302,12 @@ table.tbl tbody tr:hover { background: var(--surface-2); }
 /* ---- Responsive ----------------------------------------------------------- */
 @media (max-width: 900px) {
   .app-admin { grid-template-columns: 1fr; }
-  .sidebar { position: fixed; left: 0; right: 0; bottom: 0; top: auto; height: auto; flex-direction: row;
-    justify-content: space-around; border-right: none; border-top: 1px solid var(--line); padding: 8px;
-    z-index: 40; overflow-x: auto; }
-  .sidebar .brand, .side-foot { display: none; }
-  .side-link { flex-direction: column; gap: 3px; font-size: 10px; padding: 8px 10px; }
-  .side-link span.t { display: none; }
-  .admin-main { padding: 18px 14px calc(72px + 20px); }
+  /* The sidebar used to become a sideways-scrolling strip of unlabeled icons
+     with My Account and Logout cut off. Phones get the same bottom nav as the
+     employee shell instead (four main tabs + More), built in app.js. */
+  .sidebar { display: none; }
+  .botnav--admin { display: flex; }
+  .admin-main { padding: 18px 14px calc(var(--nav-h) + var(--safe-b) + 20px); }
 }
 @media (min-width: 640px) {
   .screen { padding: 26px 22px; }
@@ -391,10 +397,6 @@ table.tbl tbody tr:hover { background: var(--surface-2); }
    long enough to overflow a short laptop screen. Without this the flex column
    squashes every link instead of letting the sidebar scroll. */
 .side-link { flex: none; }
-@media (max-width: 900px) {
-  .sidebar { justify-content: flex-start; gap: 2px; -webkit-overflow-scrolling: touch; }
-  .side-link { flex: 0 0 auto; min-width: 58px; }
-}
 @media (max-width: 420px) {
   .geo-coords { grid-template-columns: 1fr; }
   .rest-grid { grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 6px; }
@@ -489,3 +491,74 @@ table.tbl tbody tr:hover { background: var(--surface-2); }
    Reset it, and pin the tracks so no child's intrinsic size can do it again. */
 .cal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .cal-cell.empty { padding: 0; }
+
+/* ==========================================================================
+   Phones — tables become stacked cards, nothing scrolls sideways
+   ========================================================================== */
+
+/* Every admin table keeps ALL its columns on a phone: each row becomes a card
+   and each cell prints its column heading (stamped into data-label by
+   labelCells() in ui.js) beside its value. Nothing is dropped, nothing scrolls
+   sideways. Desktop keeps the ordinary table above this breakpoint. */
+@media (max-width: 700px) {
+  .table-wrap { overflow: visible; background: none; box-shadow: none; border-radius: 0; }
+  table.tbl, table.tbl--wide { min-width: 0; display: block; }
+  table.tbl thead { display: none; }
+  table.tbl tbody { display: grid; gap: 10px; }
+  table.tbl tbody tr { display: block; background: var(--surface); border-radius: var(--r);
+    box-shadow: var(--sh-sm); padding: 4px 14px; border: 1px solid rgba(231,236,236,.7); }
+  table.tbl tbody tr:hover { background: var(--surface); }
+  table.tbl td { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; align-items: center;
+    padding: 9px 0; border-bottom: 1px solid var(--line); white-space: normal; text-align: right; font-size: 13.5px; }
+  table.tbl td:last-child { border-bottom: none; }
+  table.tbl td::before { content: attr(data-label); grid-column: 1; grid-row: 1 / span 20; text-align: left;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; }
+  table.tbl td > * { grid-column: 2; justify-self: end; }
+  table.tbl td:first-child > *, table.tbl td[data-label=""] > *, table.tbl td[colspan] > * { justify-self: auto; }
+  /* First column (the person / the date) is the card's heading. */
+  table.tbl td:first-child { display: block; text-align: left; padding: 12px 0 10px; }
+  table.tbl td:first-child::before { content: none; }
+  /* An unlabeled column is the action column: buttons go full width. */
+  table.tbl td[data-label=""] { display: block; text-align: left; padding: 12px 0; }
+  table.tbl td[data-label=""]::before { content: none; }
+  table.tbl td[data-label=""] .btn { width: 100%; }
+  table.tbl td[data-label=""] .row { flex-wrap: wrap; }
+  table.tbl td[data-label=""] .row .btn { flex: 1 1 auto; width: auto; }
+  /* Empty-state row */
+  table.tbl td[colspan] { display: block; text-align: center; }
+  table.tbl td[colspan]::before { content: none; }
+  /* Cells whose value is a mini bar chart or a wrapped chip list */
+  table.tbl td .bar { width: 100px; }
+}
+
+@media (max-width: 640px) {
+  /* A long pill ("Operations Director · Management") has to wrap on a phone;
+     let it grow instead of spilling its second line out of a 26px box. Pills
+     with an inline height keep it — those are short one-word labels. */
+  .pill { height: auto; padding-top: 5px; padding-bottom: 5px; line-height: 1.3; text-align: left; }
+  /* Text links are one line of 13px type — give them a finger-sized hit area. */
+  .link { min-height: 32px; display: inline-flex; align-items: center; }
+  /* Month pickers (Payroll, calendars) carry a label plus up to two extra
+     buttons; let the extras drop to a second line instead of overflowing. */
+  .cal-nav { flex-wrap: wrap; }
+}
+
+@media (max-width: 420px) {
+  /* Three money tiles side by side can't fit "EGP 12,345.00" each; stack the
+     first two and let the net figure take the full width. */
+  .modal .stat-3 { grid-template-columns: 1fr 1fr; }
+  .modal .stat-3 > :last-child { grid-column: 1 / -1; }
+  /* A dialog is only ~276px wide here; the 84px avatar left the name wrapping
+     one word per line. */
+  .modal .avatar--lg { width: 60px; height: 60px; font-size: 21px; }
+  /* "Title + small button" header rows: drop the button onto its own line at
+     full width instead of squeezing the title to a few characters. */
+  .row.between:has(> .btn--sm) { flex-wrap: wrap; }
+  .row.between > .btn--sm { flex: 1 1 100%; }
+}
+
+/* The remove "x" inside a holiday chip is a 16px icon; give it a 30px hit
+   area. The negative margins cancel the extra 14px exactly, so the chip's
+   layout is unchanged. */
+.pill > button { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 30px; min-height: 30px; margin: -7px; }

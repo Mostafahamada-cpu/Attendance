@@ -65,7 +65,7 @@ export default async function adminLeaves({ profile, refresh }) {
     });
   screen.append(seg);
 
-  const grid = el('div', { style: { display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(auto-fill,minmax(340px,1fr))' } });
+  const grid = el('div', { style: { display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(auto-fill,minmax(min(340px,100%),1fr))' } });
   screen.append(grid);
 
   function rowsFor() {

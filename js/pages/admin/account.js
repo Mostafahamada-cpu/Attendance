@@ -1,5 +1,5 @@
 import { Balances } from '../../lib/data.js?v=20260903a';
-import { el, avatar } from '../../lib/ui.js?v=20260903a';
+import { el, avatar, icon } from '../../lib/ui.js?v=20260903a';
 import { LEAVE_TYPES } from './balances.js?v=20260903a';
 import { securityCard } from '../shared/security.js?v=20260903a';
 
@@ -9,7 +9,7 @@ import { securityCard } from '../shared/security.js?v=20260903a';
 // This is that route. It changes the SIGNED-IN user's own password through the
 // GoTrue /user endpoint — an admin still cannot set anybody else's password
 // from the app, which is deliberate.
-export default async function adminAccount({ profile }) {
+export default async function adminAccount({ profile, logout }) {
   const screen = el('div.fade-up');
   screen.append(el('div', { style: { marginBottom: '20px' } },
     el('h1', { style: { fontSize: '26px', fontWeight: '800' } }, 'My Account'),
@@ -52,6 +52,19 @@ export default async function adminAccount({ profile }) {
   // ── Security ───────────────────────────────────────────────────────────────
   //  The very same component the employee settings screen uses.
   screen.append(securityCard());
+
+  // ── Log out ────────────────────────────────────────────────────────────────
+  //  `logout` is the app shell's confirm-then-sign-out flow (the same one the
+  //  sidebar uses): it asks first, then ends the Supabase session and returns
+  //  to Login. Nothing auth-related lives on this page.
+  const lcard = el('div.card', { style: { marginTop: '18px' } });
+  lcard.append(el('div.card-sub.b', { style: { marginBottom: '4px' } }, 'Session'));
+  lcard.append(el('p.tiny.muted', { style: { marginBottom: '14px' } },
+    'Sign out of the admin console on this device. You will need your password to sign back in.'));
+  const out = el('button.btn.btn--danger.btn--block', { type: 'button', html: icon('logout') + '<span>Log Out</span>' });
+  out.addEventListener('click', logout);
+  lcard.append(out);
+  screen.append(lcard);
 
   return screen;
 }

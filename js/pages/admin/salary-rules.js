@@ -11,7 +11,7 @@
 // themselves have no write grants at all, so a crafted PostgREST call from the
 // console is refused before RLS is even consulted.
 import { Profiles, SalaryRules, Shifts, Settings, OffDays, Holidays, Payroll } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, emptyState } from '../../lib/ui.js?v=20260903a';
+import { el, icon, avatar, emptyState, labelCells } from '../../lib/ui.js?v=20260903a';
 import { toastOk, toastErr, modal, confirmDialog } from '../../lib/toast.js?v=20260903a';
 import { DOW, DOW_FULL, fmtShortDate, todayYMD } from '../../lib/time.js?v=20260903a';
 import { egp, hm12, timeInputValue, ABSENCE_BASIS, PERMISSION_MODES } from '../../lib/money.js?v=20260903a';
@@ -43,7 +43,7 @@ export default async function adminSalaryRules({ refresh } = {}) {
 
   // ── Company defaults + shifts ─────────────────────────────────────────────
   const top = el('div', { style: {
-    display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', marginBottom: '18px' } });
+    display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(auto-fit,minmax(min(300px,100%),1fr))', marginBottom: '18px' } });
   top.append(defaultsCard(cfg, refresh), shiftsCard(shifts, refresh));
   screen.append(top);
 
@@ -161,6 +161,7 @@ export default async function adminSalaryRules({ refresh } = {}) {
       tbody.append(tr);
     }
     table.append(tbody);
+    labelCells(table);
   }
 
   sInput.addEventListener('input', draw);

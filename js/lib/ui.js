@@ -144,6 +144,17 @@ export function emptyState(iconName, title, sub) {
   return e;
 }
 
+// ---- Tables on phones -------------------------------------------------------
+// Stamp every body cell with its column heading. Below 700px components.css
+// turns each row into a card and prints data-label beside the value, so no
+// column is lost on a phone. Call it after (re)filling a table.tbl.
+export function labelCells(table) {
+  const heads = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim());
+  for (const tr of table.querySelectorAll('tbody tr')) {
+    [...tr.children].forEach((td, i) => { if (!td.hasAttribute('colspan')) td.dataset.label = heads[i] ?? ''; });
+  }
+}
+
 // ---- Pills ----------------------------------------------------------------
 export function pill(status) {
   const map = { approved: 'Approved', pending: 'Pending', denied: 'Denied', present: 'Present',

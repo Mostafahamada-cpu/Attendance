@@ -13,7 +13,7 @@ export default async function adminOffdays() {
 
   if (!people.length) { screen.append(el('div.card', emptyState('users', 'No employees yet'))); return screen; }
 
-  const grid = el('div', { style: { display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))' } });
+  const grid = el('div', { style: { display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(auto-fill,minmax(min(320px,100%),1fr))' } });
   screen.append(grid);
 
   for (const p of people) grid.append(await empCard(p));

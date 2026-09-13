@@ -1,5 +1,5 @@
 import { Profiles, Weekend } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, emptyState } from '../../lib/ui.js?v=20260903a';
+import { el, icon, avatar, emptyState, labelCells } from '../../lib/ui.js?v=20260903a';
 import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260903a';
 import { ago, DOW_FULL, DOW } from '../../lib/time.js?v=20260903a';
 
@@ -31,7 +31,7 @@ export default async function adminWeekend({ refresh }) {
 
   // ── Pending approvals ─────────────────────────────────────────────────────
   screen.append(el('div.section-h', el('h2', 'Second-change requests awaiting approval')));
-  const pendWrap = el('div', { style: { display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(auto-fill,minmax(330px,1fr))' } });
+  const pendWrap = el('div', { style: { display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(auto-fill,minmax(min(330px,100%),1fr))' } });
   if (!pending.length) {
     pendWrap.append(el('div.card', emptyState('check', 'Nothing to review', 'Second weekend-change requests will appear here.')));
   } else {
@@ -71,6 +71,7 @@ export default async function adminWeekend({ refresh }) {
     tb.append(tr);
   }
   t.append(tb);
+  labelCells(t);
   wrap.append(t);
   screen.append(wrap);
 

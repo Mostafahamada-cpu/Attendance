@@ -2,8 +2,8 @@
 import { auth, getSession, setLogoutHandler } from './lib/supabase.js?v=20260903a';
 import { Profiles, Notifs } from './lib/data.js?v=20260903a';
 import { el, icon, avatar, mount } from './lib/ui.js?v=20260903a';
-import { toastErr } from './lib/toast.js?v=20260903a';
-import { SUPABASE_URL } from '../config.js?v=20260903a';
+import { toastErr, confirmDialog, modal } from './lib/toast.js?v=20260903a';
+import { SUPABASE_URL, SESSION_KEY } from '../config.js?v=20260903a';
 
 import loginPage from './pages/login.js?v=20260903a';
 import empHome from './pages/employee/home.js?v=20260903a';
@@ -82,6 +82,10 @@ const ADM_NAV = [
   { r: 'admin/geofence', icon: 'pin', label: 'Geofence' },
   { r: 'admin/analytics', icon: 'trend', label: 'Analytics' },
 ];
+// Phones: the four tabs that fit in a bottom nav. Everything else in ADM_NAV,
+// plus My Account and Logout, lives behind the fifth tab, "More" — the same
+// shape as the employee shell, so nothing the sidebar offers is lost.
+const ADM_NAV_PRIMARY = ['admin', 'admin/leaves', 'admin/employees', 'admin/payroll'];
 
 // ---- Employee shell -------------------------------------------------------
 function empShell(routeKey) {
@@ -121,16 +125,59 @@ function admShell(routeKey) {
   const prof = el('a.side-link' + (routeKey === 'admin/account' ? '.on' : ''), { href: '#/admin/account' });
   prof.append(avatar(state.profile, 'sm'));
   prof.append(el('div', el('div.small.b', state.profile?.full_name || 'Admin'), el('div.tiny.muted', 'My Account')));
-  const out = el('a.side-link', { href: '#/logout', html: icon('logout', 'ic') + '<span class="t">Logout</span>' });
+  // Same confirm-then-sign-out flow as the My Account button, so an admin is
+  // never logged out by a stray click on the sidebar.
+  const out = el('a.side-link', { href: '#/logout', html: icon('logout', 'ic') + '<span class="t">Logout</span>',
+    onClick: (e) => { e.preventDefault(); confirmLogout(); } });
   foot.append(prof, out);
   side.append(foot);
 
   const main = el('main.admin-main');
   main.append(content);
   const wrap = el('div.app-admin');
-  wrap.append(side, main);
+  wrap.append(side, main, admBotNav(routeKey));
   mount(appRoot, wrap);
   return content;
+}
+
+// Bottom nav for the admin shell on phones (CSS shows it in place of the
+// sidebar below 900px).
+function admBotNav(routeKey) {
+  const nav = el('nav.botnav.botnav--admin');
+  for (const item of ADM_NAV.filter(i => ADM_NAV_PRIMARY.includes(i.r))) {
+    const a = el('a' + (routeKey === item.r ? '.on' : ''), { href: '#/' + item.r });
+    a.innerHTML = icon(item.icon, 'ic') + `<span>${item.label === 'Leave Requests' ? 'Leaves' : item.label}</span>`;
+    nav.append(a);
+  }
+  const inMore = !ADM_NAV_PRIMARY.includes(routeKey);
+  const more = el('button' + (inMore ? '.on' : ''), { type: 'button', 'aria-label': 'More' });
+  more.innerHTML = icon('more', 'ic') + '<span>More</span>';
+  more.addEventListener('click', () => admMoreSheet(routeKey));
+  nav.append(more);
+  return nav;
+}
+
+// The rest of the sidebar as a bottom sheet: every remaining destination, then
+// My Account and Logout — the two the old phone layout cut off entirely.
+function admMoreSheet(routeKey) {
+  const menu = el('div.menu');
+  const item = (ic, label, on, onClick, cls = '') => {
+    const b = el('button.menu-item' + (on ? '.on' : '') + cls, { type: 'button' });
+    b.innerHTML = icon(ic, 'ic') + `<span class="grow">${label}</span>` + (cls ? '' : icon('chevR', 'chev'));
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  let sheet;
+  const go = (hash) => { sheet.close(); navigate(hash); };
+  for (const it of ADM_NAV.filter(i => !ADM_NAV_PRIMARY.includes(i.r))) {
+    menu.append(item(it.icon, it.label, routeKey === it.r, () => go('#/' + it.r)));
+  }
+  const acct = el('div.menu', { style: { marginTop: '12px' } });
+  acct.append(item('user', 'My Account', routeKey === 'admin/account', () => go('#/admin/account')));
+  acct.append(item('logout', 'Logout', false, () => { sheet.close(); confirmLogout(); }, '.danger'));
+  const body = el('div', { style: { maxHeight: '70vh', overflowY: 'auto', margin: '0 -4px', padding: '0 4px' } });
+  body.append(menu, acct);
+  sheet = modal({ title: 'More', body });
 }
 
 // ---- Skeleton while a page loads ------------------------------------------
@@ -148,6 +195,12 @@ async function render() {
 
   if (key === 'logout') { await doLogout(); return; }
 
+  // Every route past Login needs a live session. state.profile alone is not
+  // enough: the token can be cleared underneath us (sign-out, failed refresh,
+  // a bfcache-restored page), and the browser Back button must never reveal
+  // an admin page once that has happened.
+  if (!getSession() || !state.profile) { state.profile = null; showLogin(); return; }
+
   const isAdmin = state.profile?.role === 'admin';
   // Route guard: admins land on admin, employees can't see admin.
   if (isAdmin && !key.startsWith('admin')) { navigate('#/admin'); return; }
@@ -162,7 +215,7 @@ async function render() {
   const token = ++currentToken;
   skeleton(container);
   try {
-    const node = await page({ profile: state.profile, navigate, refresh: render });
+    const node = await page({ profile: state.profile, navigate, refresh: render, logout: confirmLogout });
     if (token !== currentToken) return; // a newer navigation superseded us
     container.replaceChildren(node);
     window.scrollTo(0, 0);
@@ -185,10 +238,21 @@ function errorState(e) {
 }
 
 async function doLogout() {
-  await auth.signOut();
+  clearInterval(pollTimer);
+  await auth.signOut();               // revokes the token server-side, clears memory + localStorage
   state.profile = null;
+  state.unread = 0;
   location.hash = '';
   showLogin();
+}
+
+// The one confirmation every logout control goes through (admin sidebar, admin
+// My Account). Cancel leaves the session untouched.
+function confirmLogout() {
+  confirmDialog({
+    title: 'Log out?', message: 'Are you sure you want to log out?',
+    confirmLabel: 'Log Out', danger: true, onConfirm: doLogout,
+  });
 }
 
 // ---- Login flow -----------------------------------------------------------
@@ -255,6 +319,12 @@ function noProfileState() {
 // ---- Start ----------------------------------------------------------------
 setLogoutHandler(() => { state.profile = null; showLogin(); });
 window.addEventListener('hashchange', () => { if (state.profile) render(); });
+// Back/forward cache can resurrect a signed-in page (its whole JS heap included)
+// after the session was ended elsewhere — e.g. logged out in another tab. If
+// the stored session is gone, finish the logout here instead of showing it.
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted && state.profile && !localStorage.getItem(SESSION_KEY)) doLogout();
+});
 
 (async function start() {
   const ok = await auth.restore();

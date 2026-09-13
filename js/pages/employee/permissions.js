@@ -58,7 +58,9 @@ export default async function empPermissions({ profile, navigate, refresh }) {
   const startF = field('Start time', el('input.input', { type: 'time', value: '14:00' }));
   const endF = field('End time', el('input.input', { type: 'time', value: '15:00' }));
 
-  const two = el('div', { style: { display: 'grid', gap: '12px', gridTemplateColumns: '1fr 1fr' } });
+  // .two (not an inline grid): its tracks are minmax(0, 1fr), so a time
+  // input's intrinsic width can't push the End column off a 320px screen.
+  const two = el('div.two');
   two.append(startF.row, endF.row);
 
   const durBox = el('div.leave-calc', { style: { marginTop: '12px' } });

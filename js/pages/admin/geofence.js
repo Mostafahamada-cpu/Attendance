@@ -1,5 +1,5 @@
 import { Settings, GeoLog, Attendance } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, emptyState } from '../../lib/ui.js?v=20260903a';
+import { el, icon, avatar, emptyState, labelCells } from '../../lib/ui.js?v=20260903a';
 import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260903a';
 import { todayYMD, fmtTime, ago, fmtShortDate } from '../../lib/time.js?v=20260903a';
 import { fmtDistance } from '../../lib/geo.js?v=20260903a';
@@ -136,6 +136,7 @@ export default async function adminGeofence({ refresh }) {
       tb.append(tr);
     }
     t.append(tb);
+    labelCells(t);
     wrap.append(t);
     screen.append(wrap);
   }
@@ -188,6 +189,7 @@ export default async function adminGeofence({ refresh }) {
       tb.append(tr);
     }
     t.append(tb);
+    labelCells(t);
     wrap.append(t);
     logWrap.append(wrap);
   }

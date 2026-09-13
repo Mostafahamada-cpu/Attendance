@@ -1,5 +1,5 @@
 import { Profiles, RestDays } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, pill, emptyState } from '../../lib/ui.js?v=20260903a';
+import { el, icon, avatar, pill, emptyState, labelCells } from '../../lib/ui.js?v=20260903a';
 import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260903a';
 import { ago, fmtShortDate, fmtDayMon } from '../../lib/time.js?v=20260903a';
 
@@ -44,7 +44,7 @@ export default async function adminRestDays({ refresh }) {
   screen.append(el('div.section-h', el('h2', 'Rest-day requests')));
   screen.append(seg);
 
-  const grid = el('div', { style: { display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(auto-fill,minmax(330px,1fr))' } });
+  const grid = el('div', { style: { display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(auto-fill,minmax(min(330px,100%),1fr))' } });
   screen.append(grid);
 
   function draw() {
@@ -89,6 +89,7 @@ export default async function adminRestDays({ refresh }) {
   }
   if (!employees.length) tb.append(el('tr', el('td', { colspan: '7' }, emptyState('users', 'No employees yet'))));
   t.append(tb);
+  labelCells(t);
   wrap.append(t);
   screen.append(wrap);
 

@@ -10,6 +10,9 @@ body {
   text-rendering: optimizeLegibility;
   line-height: 1.45;
   overflow-x: hidden;
+  /* Emails, coordinates and file names have no spaces; on a phone they must
+     break rather than push their card past the edge of the screen. */
+  overflow-wrap: anywhere;
 }
 img { max-width: 100%; display: block; }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -44,7 +47,7 @@ a { color: inherit; text-decoration: none; }
 .between { justify-content: space-between; }
 .center { justify-content: center; }
 .wrap { flex-wrap: wrap; }
-.grow { flex: 1; }
+.grow { flex: 1; min-width: 0; }   /* min-width:0 — may shrink below its content instead of overflowing */
 .muted { color: var(--muted); }
 .tiny { font-size: 12px; }
 .small { font-size: 13px; }

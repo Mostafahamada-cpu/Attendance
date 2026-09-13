@@ -16,7 +16,7 @@ export default async function adminAnalytics() {
   // period control
   let period = 'week';
   const seg = el('div.seg', { style: { marginBottom: '18px' } });
-  const customWrap = el('div.row', { style: { gap: '8px', marginBottom: '18px', display: 'none' } });
+  const customWrap = el('div.row', { style: { gap: '8px', marginBottom: '18px', display: 'none', flexWrap: 'wrap' } });
   const cFrom = el('input.input', { type: 'date', style: { maxWidth: '170px' } });
   const cTo = el('input.input', { type: 'date', style: { maxWidth: '170px' } });
   customWrap.append(cFrom, cTo);
