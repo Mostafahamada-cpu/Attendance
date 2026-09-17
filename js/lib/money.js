@@ -54,6 +54,7 @@ export const DAY_TYPES = {
   present:    { label: 'Present',    pill: 'present',  costs: false },
   late:       { label: 'Late',       pill: 'pending',  costs: true  },
   absent:     { label: 'Absent',     pill: 'denied',   costs: true  },
+  not_in:     { label: 'Not clocked in', pill: 'plain', costs: false },
   leave:      { label: 'Vacation',   pill: 'approved', costs: false },
   rest_day:   { label: 'Rest Day',   pill: 'working',  costs: false },
   permission: { label: 'Permission', pill: 'working',  costs: false },
@@ -81,4 +82,81 @@ export function dailyRateExplainer(rules, totals) {
     return `${egp(rules.monthly_salary)} ÷ ${rules.absence_fixed_days} days = ${egp(totals.daily_rate)} per day`;
   }
   return `${egp(rules.monthly_salary)} ÷ ${totals.working_days} scheduled working day(s) = ${egp(totals.daily_rate)} per day`;
+}
+
+// ---- Late-arrival tiers (v8) ------------------------------------------------
+// THE rule lives in the ta_late_tiers table and every deduction is priced by
+// ta_late_deduction() in the database. These helpers only DESCRIBE that rule
+// for the screens; the fallback below is the seeded default and is used solely
+// when a screen has no server copy yet (pre-v8 database).
+//
+// Boundary rule, identical to ta_late_tier(): a tier applies when the arrival
+// is STRICTLY MORE than its threshold late, so 15 min → free, 16 min → ¼ day,
+// 30 → ¼, 31 → ½, 60 → ½, 61 → full.
+export const DEFAULT_LATE_TIERS = [
+  { threshold_minutes: 15, deduction_days: 0.25, label: 'Quarter day' },
+  { threshold_minutes: 30, deduction_days: 0.5,  label: 'Half day' },
+  { threshold_minutes: 60, deduction_days: 1,    label: 'Full day' },
+];
+
+export const LATE_MODES = [
+  ['tiered',     'Company tiers',     'quarter / half / full day of pay, by how late'],
+  ['per_minute', 'Per minute (legacy)', 'grace period, then a fixed amount per late minute'],
+];
+
+// The tier `lateMinutes` falls into, or null inside the free window.
+export function lateTierFor(lateMinutes, tiers = DEFAULT_LATE_TIERS) {
+  const m = Math.max(0, Math.floor(Number(lateMinutes) || 0));
+  let hit = null;
+  for (const t of [...(tiers || [])].sort((a, b) => a.threshold_minutes - b.threshold_minutes)) {
+    if (m > t.threshold_minutes) hit = t;
+  }
+  return hit;
+}
+
+// The free window = the lowest threshold.
+export function lateGrace(tiers = DEFAULT_LATE_TIERS) {
+  const ts = (tiers || []).map(t => Number(t.threshold_minutes)).filter(Number.isFinite);
+  return ts.length ? Math.min(...ts) : 15;
+}
+
+// 0.25 → '¼ day' · 0.5 → '½ day' · 1 → '1 day' · 1.5 → '1.5 days'
+export function dayFraction(v) {
+  const n = Number(v || 0);
+  if (n === 0.25) return '¼ day';
+  if (n === 0.5) return '½ day';
+  if (n === 0.75) return '¾ day';
+  if (n === 1) return '1 day';
+  return `${n} days`;
+}
+
+// One line per tier, e.g. 'Up to 15 min: free · >15 min: ¼ day · >30 min: ½ day · >60 min: 1 day'
+export function lateTiersSummary(tiers = DEFAULT_LATE_TIERS) {
+  const sorted = [...(tiers || [])].sort((a, b) => a.threshold_minutes - b.threshold_minutes);
+  if (!sorted.length) return 'No late deduction';
+  const parts = [`Up to ${sorted[0].threshold_minutes} min: free`];
+  for (const t of sorted) parts.push(`>${t.threshold_minutes} min: ${dayFraction(t.deduction_days)}`);
+  return parts.join(' · ');
+}
+
+// The sentence for a rules card, whichever rule the employee is on.
+export function lateRuleSummary(rules) {
+  if ((rules?.late_mode || 'tiered') === 'per_minute') {
+    return `${rules.grace_minutes ?? 15} min grace, then ${egp(rules.late_deduction_per_minute ?? 1)} per minute`
+      + (rules.late_deduction_cap_per_day ? ` (max ${egp(rules.late_deduction_cap_per_day)}/day)` : '');
+  }
+  return lateTiersSummary(rules?.late_tiers || DEFAULT_LATE_TIERS);
+}
+
+// Why one late day cost what it did — reads the figures ta_payroll() stored on
+// the day entry, so the explanation can never disagree with the amount.
+export function lateReason(day, rules) {
+  const arrived = day.clock_in_local ? `arrived ${hm12(day.clock_in_local)} · ` : '';
+  const shift = rules?.shift_start ? ` (shift starts ${hm12(rules.shift_start)})` : '';
+  if ((rules?.late_mode || 'tiered') === 'per_minute') {
+    return `${arrived}${day.late_minutes} min late${shift} · ${day.billable_minutes} billable after the ${rules.grace_minutes} min grace`;
+  }
+  const frac = Number(day.late_days || 0);
+  return `${arrived}${day.late_minutes} min late${shift} → ${day.late_label || 'late'}`
+    + (frac > 0 ? ` = ${dayFraction(frac)} × ${egp(rules?.daily_rate ?? day.daily_rate ?? 0)} daily rate` : '');
 }

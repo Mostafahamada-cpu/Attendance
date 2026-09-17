@@ -4,10 +4,10 @@
 // caller's unless the caller is an admin, so this screen physically cannot be
 // pointed at a colleague — and the salary tables have no write grant for
 // anyone, so nothing here can be edited from the browser either.
-import { Payroll, Permissions } from '../../lib/data.js?v=20260903a';
-import { el, icon, ring, pageHead, emptyState } from '../../lib/ui.js?v=20260903a';
-import { MONTHS, DOW, DOW_FULL, fmtDayMon } from '../../lib/time.js?v=20260903a';
-import { egp, deduction, mins, hm12, dayType, dailyRateExplainer } from '../../lib/money.js?v=20260903a';
+import { Payroll, Permissions } from '../../lib/data.js?v=20260917a';
+import { el, icon, ring, pageHead, emptyState } from '../../lib/ui.js?v=20260917a';
+import { MONTHS, DOW, DOW_FULL, fmtDayMon } from '../../lib/time.js?v=20260917a';
+import { egp, deduction, mins, hm12, dayType, dailyRateExplainer, lateRuleSummary, dayFraction, lateGrace, DEFAULT_LATE_TIERS } from '../../lib/money.js?v=20260917a';
 
 export default async function empSalary({ profile, navigate }) {
   const now = new Date();
@@ -84,12 +84,27 @@ function body(pay, usage, year, month) {
   const sl = el('div', { style: { display: 'grid', gap: '9px' } });
   sl.append(
     kv('Shift', `${r.shift_name} · ${hm12(r.shift_start)} – ${hm12(r.shift_end)}`),
-    kv('Grace period', `${r.grace_minutes} minutes after ${hm12(r.shift_start)}`),
-    kv('Late deduction', `${egp(r.late_deduction_per_minute)} per minute past the grace`),
+    kv('Free window', `up to ${(r.late_mode || 'tiered') === 'per_minute' ? r.grace_minutes : lateGrace(r.late_tiers || DEFAULT_LATE_TIERS)} minutes after ${hm12(r.shift_start)}`),
+    kv('Late arrivals', lateRuleSummary(r)),
     kv('Daily rate', dailyRateExplainer(r, t)),
     kv('Status', r.is_active === false ? 'Inactive' : 'Active'),
   );
   sched.append(sl);
+
+  // The tiers, spelled out — the same table payroll prices from.
+  if ((r.late_mode || 'tiered') !== 'per_minute') {
+    const tiers = [...(r.late_tiers || DEFAULT_LATE_TIERS)].sort((a, b) => a.threshold_minutes - b.threshold_minutes);
+    const strip = el('div.tier-strip', { style: { marginTop: '14px' } });
+    const free = el('div.tier.tier--free');
+    free.append(el('div.tier-when', `≤ ${tiers[0]?.threshold_minutes ?? 15} min`), el('div.tier-label', 'On time'), el('div.tier-cost', 'no deduction'));
+    strip.append(free);
+    for (const t of tiers) {
+      const b = el('div.tier');
+      b.append(el('div.tier-when', `> ${t.threshold_minutes} min`), el('div.tier-label', t.label), el('div.tier-cost', `− ${dayFraction(t.deduction_days)} of pay`));
+      strip.append(b);
+    }
+    sched.append(strip);
+  }
 
   sched.append(el('div.tiny.b', { style: { marginTop: '14px', marginBottom: '7px' } }, 'Weekly days off'));
   const chips = el('div.row.wrap', { style: { gap: '6px' } });
@@ -145,7 +160,8 @@ function body(pay, usage, year, month) {
   out.push(sectionHead('My deductions'));
   const ded = el('div.card');
   const lines = [
-    ['Late arrivals', t.late_deduction, `${t.late_days} day(s) · ${mins(t.total_late_minutes)} billable`],
+    ['Late arrivals', t.late_deduction, `${t.late_days} day(s)` + (Number(t.late_day_fraction) > 0
+      ? ` · ${dayFraction(t.late_day_fraction)} of pay` : ` · ${mins(t.total_late_minutes)} billable`)],
     ['Absences', t.absence_deduction, `${t.absence_days} day(s) at ${egp(t.daily_rate)}`],
     ['Leave permissions', t.permission_deduction, `${t.permission_count} approved · ${mins(t.permission_minutes)}`],
     ['Other', t.other_deductions, (pay.adjustments || []).map(a => a.label).join(', ') || 'None'],
@@ -179,7 +195,7 @@ function body(pay, usage, year, month) {
         el('div.meta', d.clock_in_local
           ? `${hm12(d.clock_in_local)} – ${d.clock_out_local ? hm12(d.clock_out_local) : '—'}`
             + (d.worked_minutes ? ` · ${mins(d.worked_minutes)}` : '')
-            + (d.billable_minutes ? ` · ${d.billable_minutes} billable late min` : '')
+            + (d.type === 'late' ? ` · ${d.late_minutes} min late → ${d.late_label || `${d.billable_minutes} billable min`}` : '')
           : (d.holiday || meta.label))));
       const dedAmt = Number(d.deduction || 0) + Number(d.permission_deduction || 0);
       if (dedAmt > 0) {

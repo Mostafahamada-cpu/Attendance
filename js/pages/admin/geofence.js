@@ -1,8 +1,8 @@
-import { Settings, GeoLog, Attendance } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, emptyState, labelCells } from '../../lib/ui.js?v=20260903a';
-import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260903a';
-import { todayYMD, fmtTime, ago, fmtShortDate } from '../../lib/time.js?v=20260903a';
-import { fmtDistance } from '../../lib/geo.js?v=20260903a';
+import { Settings, GeoLog, Attendance } from '../../lib/data.js?v=20260917a';
+import { el, icon, avatar, emptyState, labelCells } from '../../lib/ui.js?v=20260917a';
+import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260917a';
+import { todayYMD, fmtTime, ago, fmtShortDate } from '../../lib/time.js?v=20260917a';
+import { fmtDistance } from '../../lib/geo.js?v=20260917a';
 
 const MIN_R = 100, MAX_R = 200;
 

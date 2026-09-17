@@ -1,7 +1,7 @@
-import { Profiles, RestDays } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, pill, emptyState, labelCells } from '../../lib/ui.js?v=20260903a';
-import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260903a';
-import { ago, fmtShortDate, fmtDayMon } from '../../lib/time.js?v=20260903a';
+import { Profiles, RestDays } from '../../lib/data.js?v=20260917a';
+import { el, icon, avatar, pill, emptyState, labelCells } from '../../lib/ui.js?v=20260917a';
+import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260917a';
+import { ago, fmtShortDate, fmtDayMon } from '../../lib/time.js?v=20260917a';
 
 // Admin view: rest-day requests + every employee's rest-day balance.
 export default async function adminRestDays({ refresh }) {

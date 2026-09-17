@@ -1,12 +1,12 @@
-import { Attendance, Balances, Settings, Permissions } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, ring } from '../../lib/ui.js?v=20260903a';
-import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260903a';
-import { verifyClockOut } from '../../lib/verify.js?v=20260903a';
-import { fmtTime, fmtHM, fmtLongDate, minToHM, minToDur } from '../../lib/time.js?v=20260903a';
+import { Attendance, Balances, Settings, Permissions } from '../../lib/data.js?v=20260917a';
+import { el, icon, avatar, ring } from '../../lib/ui.js?v=20260917a';
+import { toastOk, toastErr, modal } from '../../lib/toast.js?v=20260917a';
+import { verifyClockOut } from '../../lib/verify.js?v=20260917a';
+import { fmtTime, fmtHM, fmtLongDate, minToHM, minToDur } from '../../lib/time.js?v=20260917a';
 import {
   getPositionWithFallback, evaluate, fmtDistance, permissionState,
   isSupported, isSecureOrigin, GeoError, DEFAULT_GEOFENCE,
-} from '../../lib/geo.js?v=20260903a';
+} from '../../lib/geo.js?v=20260917a';
 
 export default async function empHome({ profile, navigate, refresh }) {
   const [today, balances, cfg, permUsage] = await Promise.all([

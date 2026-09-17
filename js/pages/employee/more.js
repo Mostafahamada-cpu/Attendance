@@ -1,8 +1,8 @@
-import { auth } from '../../lib/supabase.js?v=20260903a';
-import { Notifs } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, pageHead } from '../../lib/ui.js?v=20260903a';
-import { modal, confirmDialog } from '../../lib/toast.js?v=20260903a';
-import { securityCard } from '../shared/security.js?v=20260903a';
+import { auth } from '../../lib/supabase.js?v=20260917a';
+import { Notifs } from '../../lib/data.js?v=20260917a';
+import { el, icon, avatar, pageHead } from '../../lib/ui.js?v=20260917a';
+import { modal, confirmDialog } from '../../lib/toast.js?v=20260917a';
+import { securityCard } from '../shared/security.js?v=20260917a';
 
 export default async function morePage({ profile, navigate }) {
   const unread = (await Notifs.unread().catch(() => [])).length;

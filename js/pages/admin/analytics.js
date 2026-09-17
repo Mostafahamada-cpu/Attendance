@@ -1,12 +1,21 @@
-import { Profiles, Attendance } from '../../lib/data.js?v=20260903a';
-import { el, icon } from '../../lib/ui.js?v=20260903a';
-import { ymd, fmtDayMon, minToHM, minToHoursDec, DOW } from '../../lib/time.js?v=20260903a';
+import { Profiles, Attendance, OffDays } from '../../lib/data.js?v=20260917a';
+import { el, icon } from '../../lib/ui.js?v=20260917a';
+import { ymd, fmtDayMon, minToHM, minToHoursDec, DOW } from '../../lib/time.js?v=20260917a';
 
-const LATE_HOUR = 9, LATE_MIN = 15;   // arrivals after 09:15 count as late
+// Lateness is NOT decided here. ta_attendance_lateness() judges every clock-in
+// against that employee's own shift start (in the company timezone) with the
+// same tiers payroll prices from — there is no company-wide start time to
+// hard-code. A pre-v8 database simply reports no late arrivals.
 
 export default async function adminAnalytics() {
   const employees = (await Profiles.all()).filter(p => p.role === 'employee');
-  const empCount = employees.length || 1;
+  // Each employee's OWN weekly off-days: a scheduled day is one that is not
+  // their rest day, so two people can have different expected-day counts for
+  // the same range. Nothing here assumes a shared weekend.
+  const offByEmp = {};
+  await Promise.all(employees.map(async (e) => {
+    offByEmp[e.id] = new Set((await OffDays.mine(e.id).catch(() => [])).map(o => o.day_of_week));
+  }));
 
   const screen = el('div.fade-up');
   screen.append(el('div', { style: { marginBottom: '20px' } },
@@ -48,22 +57,22 @@ export default async function adminAnalytics() {
   async function load() {
     const [from, to] = rangeFor();
     kpiGrid.replaceChildren(skel(), skel(), skel(), skel());
-    const recs = await Attendance.range(from, to);
+    const [recs, lateRows] = await Promise.all([
+      Attendance.range(from, to),
+      Attendance.lateness(from, to).catch(() => []),
+    ]);
 
     const totalMin = recs.reduce((s, r) => s + (r.total_minutes || 0), 0);
     const withHours = recs.filter(r => r.total_minutes > 0);
     const avgMin = withHours.length ? totalMin / withHours.length : 0;
 
-    // distinct working days in range
+    // Expected attendances = for every employee, the days in range that are
+    // not one of THEIR off-days.
     const days = distinctDates(from, to);
-    const expected = empCount * days.length;
+    const expected = employees.reduce((sum, e) => sum + days.filter(d => !offByEmp[e.id].has(new Date(d + 'T00:00:00').getDay())).length, 0);
     const rate = expected ? Math.round(recs.length / expected * 100) : 0;
 
-    const late = recs.filter(r => {
-      if (!r.clock_in) return false;
-      const d = new Date(r.clock_in);
-      return d.getHours() > LATE_HOUR || (d.getHours() === LATE_HOUR && d.getMinutes() > LATE_MIN);
-    }).length;
+    const late = lateRows.filter(l => l.is_late).length;
     const absences = Math.max(0, expected - recs.length);
 
     kpiGrid.replaceChildren(

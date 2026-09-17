@@ -1,6 +1,6 @@
 // Domain data access — all ta_* tables. Thin wrappers over supabase db.
-import { db, userId } from './supabase.js?v=20260903a';
-import { todayYMD, ymd } from './time.js?v=20260903a';
+import { db, userId } from './supabase.js?v=20260917a';
+import { todayYMD, ymd } from './time.js?v=20260917a';
 
 // ---- Profiles -------------------------------------------------------------
 export const Profiles = {
@@ -29,6 +29,11 @@ export const Attendance = {
     { p_lat: pos.lat, p_lng: pos.lng, p_accuracy: pos.accuracy })),
   clockOut: async (pos) => unwrapClock(await db.rpc('ta_clock_out',
     { p_lat: pos.lat, p_lng: pos.lng, p_accuracy: pos.accuracy })),
+  // v8: every clock-in in a range, judged against each employee's OWN shift
+  // start in the company timezone and priced by the same function payroll
+  // uses. Admins see everyone; an employee only gets their own rows back.
+  lateness: (from, to, empId = null) => db.rpc('ta_attendance_lateness',
+    { p_from: from, p_to: to, p_employee: empId }),
 };
 
 // ta_clock_in / ta_clock_out answer with { ok, error, reason, distance_m,
@@ -273,7 +278,25 @@ export const SalaryRules = {
     p_permission_deduction_enabled: p.permissionDeductionEnabled ?? null,
     p_permission_deduction_mode: p.permissionDeductionMode ?? null,
     p_permission_deduction_rate: nn(p.permissionDeductionRate),
+    // v8: 'tiered' (company tiers) or 'per_minute' (legacy). null = keep.
+    p_late_mode: p.lateMode ?? null,
   }),
+  // The quick "Edit salary" control. Deliberately the SAME RPC as the full
+  // rules dialog with every other field null — there is one salary column,
+  // one admin check and one write path, not a second salary system.
+  setSalary: (empId, salary) => db.rpc('ta_set_salary_rules', {
+    p_employee: empId, p_monthly_salary: nn(salary),
+  }),
+};
+
+// ---- Late-arrival tiers (v8) ----------------------------------------------
+// THE late-deduction rule: [{threshold_minutes, deduction_days, label}]. Read
+// by everyone (an employee's own salary screen explains it), written only
+// through ta_set_late_tiers(), which re-checks the caller is an admin and that
+// a later arrival never costs less than an earlier one.
+export const LateTiers = {
+  all: () => db.list('ta_late_tiers', 'select=threshold_minutes,deduction_days,label&order=threshold_minutes.asc'),
+  set: (tiers) => db.rpc('ta_set_late_tiers', { p_tiers: tiers }),
 };
 
 // A blank input must reach the RPC as null (= "leave it alone"), never as NaN.
@@ -307,6 +330,10 @@ export const Payroll = {
   mine: (y, month) => db.rpc('ta_payroll',
     { p_employee: userId(), p_year: y, p_month: month + 1 }),
   all: (y, month, includeInactive = false) => db.rpc('ta_payroll_all',
+    { p_year: y, p_month: month + 1, p_include_inactive: !!includeInactive }),
+  // v8: one round trip for the admin employee cards — each employee's payroll
+  // summary for the month plus today's status, balances and pending leave.
+  board: (y, month, includeInactive = false) => db.rpc('ta_employee_board',
     { p_year: y, p_month: month + 1, p_include_inactive: !!includeInactive }),
   // Re-sending the same label for the same month UPDATES that deduction
   // instead of adding a second one.

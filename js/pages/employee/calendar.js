@@ -1,7 +1,7 @@
-import { Attendance, OffDays, Leaves, Permissions, leaveStage, STAGE_LABEL, STAGE_PILL } from '../../lib/data.js?v=20260903a';
-import { el, icon, pill, pageHead } from '../../lib/ui.js?v=20260903a';
-import { ymd, todayYMD, fmtHM, minToHM, fmtLongDate, fmtShortDate, MONTHS, DOW } from '../../lib/time.js?v=20260903a';
-import { hm12, mins } from '../../lib/money.js?v=20260903a';
+import { Attendance, OffDays, Leaves, Permissions, leaveStage, STAGE_LABEL, STAGE_PILL } from '../../lib/data.js?v=20260917a';
+import { el, icon, pill, pageHead } from '../../lib/ui.js?v=20260917a';
+import { ymd, todayYMD, fmtHM, minToHM, fmtLongDate, fmtShortDate, MONTHS, DOW } from '../../lib/time.js?v=20260917a';
+import { hm12, mins } from '../../lib/money.js?v=20260917a';
 
 export default async function calendarPage({ profile, navigate }) {
   const now = new Date();

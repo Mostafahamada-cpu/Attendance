@@ -6,8 +6,8 @@
 // ta_clock_out() in the database, which re-checks the geofence and computes
 // the minutes itself. Nothing here changes that logic — the RPC is called
 // exactly as before, only later.
-import { el } from './ui.js?v=20260903a';
-import { modal } from './toast.js?v=20260903a';
+import { el } from './ui.js?v=20260917a';
+import { modal } from './toast.js?v=20260917a';
 
 export const VERIFY_WORD = 'RingRoad';
 

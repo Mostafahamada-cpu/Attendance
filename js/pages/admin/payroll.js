@@ -7,11 +7,11 @@
 // deduction. The only stored money is the manual "other deductions" list in
 // the breakdown dialog, and even that is keyed uniquely on
 // (employee, month, label) — re-entering the same label edits it in place.
-import { Payroll } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, emptyState, labelCells } from '../../lib/ui.js?v=20260903a';
-import { toastOk, toastErr, modal, confirmDialog } from '../../lib/toast.js?v=20260903a';
-import { MONTHS, DOW, fmtShortDate, fmtDayMon } from '../../lib/time.js?v=20260903a';
-import { egp, deduction, mins, hm12, dayType, dailyRateExplainer } from '../../lib/money.js?v=20260903a';
+import { Payroll } from '../../lib/data.js?v=20260917a';
+import { el, icon, avatar, emptyState, labelCells } from '../../lib/ui.js?v=20260917a';
+import { toastOk, toastErr, modal, confirmDialog } from '../../lib/toast.js?v=20260917a';
+import { MONTHS, DOW, fmtShortDate, fmtDayMon } from '../../lib/time.js?v=20260917a';
+import { egp, deduction, mins, hm12, dayType, dailyRateExplainer, lateRuleSummary, lateReason, dayFraction } from '../../lib/money.js?v=20260917a';
 
 export default async function adminPayroll() {
   const now = new Date();
@@ -219,9 +219,7 @@ export function breakdownBody(pay, year, month, close, onChanged) {
   const rl = el('div', { style: { display: 'grid', gap: '4px' } });
   rl.append(
     kv('Shift', `${rules.shift_name} · ${hm12(rules.shift_start)} – ${hm12(rules.shift_end)}`),
-    kv('Grace period', `${rules.grace_minutes} minutes`),
-    kv('Late deduction', `${egp(rules.late_deduction_per_minute)} per billable minute`
-      + (rules.late_deduction_cap_per_day ? ` (capped at ${egp(rules.late_deduction_cap_per_day)}/day)` : '')),
+    kv('Late arrivals', lateRuleSummary(rules)),
     kv('Weekly days off', (rules.off_days || []).length ? rules.off_days.map(d => DOW[d]).join(', ') : 'None'),
     kv('Daily rate', dailyRateExplainer(rules, t)),
     kv('Leave permissions', `${rules.permissions_per_month} per month · `
@@ -244,6 +242,9 @@ export function breakdownBody(pay, year, month, close, onChanged) {
     countPill('weekend', `${t.holidays} holidays`),
     countPill('working', `${t.permission_count} permissions`),
   );
+  if (Number(t.late_day_fraction) > 0) {
+    counts.append(countPill('pending', `${dayFraction(t.late_day_fraction)} lost to lateness`));
+  }
   box.append(counts);
 
   // ── Why money was deducted ────────────────────────────────────────────────
@@ -257,10 +258,7 @@ export function breakdownBody(pay, year, month, close, onChanged) {
   if (lateDays.length) {
     why.append(reasonHead('Late arrivals', deduction(t.late_deduction)));
     for (const d of lateDays) {
-      why.append(reasonRow(
-        fmtDayMon(d.date),
-        `arrived ${hm12(d.clock_in_local)} · ${d.late_minutes} min late, ${d.billable_minutes} billable after the ${rules.grace_minutes} min grace`,
-        deduction(d.deduction)));
+      why.append(reasonRow(fmtDayMon(d.date), lateReason(d, rules), deduction(d.deduction)));
     }
   }
   if (absentDays.length) {
@@ -336,7 +334,7 @@ export function breakdownBody(pay, year, month, close, onChanged) {
   const dtable = el('table.tbl');
   const dhead = el('thead');
   dhead.innerHTML = '<tr><th>Date</th><th>Status</th><th>In</th><th>Out</th><th>Worked</th>'
-    + '<th>Late</th><th>Billable</th><th>Permission</th><th>Deduction</th></tr>';
+    + '<th>Late</th><th>Late rule</th><th>Permission</th><th>Deduction</th></tr>';
   dtable.append(dhead);
   const dbody = el('tbody');
   for (const d of days) {
@@ -350,7 +348,11 @@ export function breakdownBody(pay, year, month, close, onChanged) {
     tr.append(el('td.tiny', d.clock_out_local ? hm12(d.clock_out_local) : '—'));
     tr.append(el('td.tiny', d.worked_minutes ? mins(d.worked_minutes) : '—'));
     tr.append(el('td.tiny', d.late_minutes ? mins(d.late_minutes) : '—'));
-    tr.append(el('td.tiny', d.billable_minutes ? mins(d.billable_minutes) : '—'));
+    // What the late minutes turned into: a tier ("Half day"), or the
+    // billable minutes on the legacy per-minute rule.
+    tr.append(el('td.tiny', d.type === 'late'
+      ? (Number(d.late_days) > 0 ? `${d.late_label} · ${dayFraction(d.late_days)}` : (d.late_label || `${mins(d.billable_minutes)} billable`))
+      : (d.late_minutes ? 'within grace' : '—')));
     tr.append(el('td.tiny', d.permission_minutes ? `${d.permission_count} · ${mins(d.permission_minutes)}` : '—'));
     const ded = Number(d.deduction || 0) + Number(d.permission_deduction || 0);
     tr.append(el('td', { style: { fontWeight: '700', color: ded > 0 ? 'var(--danger)' : 'var(--ink-3)' } },

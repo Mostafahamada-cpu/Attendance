@@ -1,10 +1,10 @@
-import { Profiles, Attendance, Leaves, Permissions } from '../../lib/data.js?v=20260903a';
-import { el, icon, avatar, pill, ring, emptyState } from '../../lib/ui.js?v=20260903a';
-import { todayYMD, fmtTime, minToDur } from '../../lib/time.js?v=20260903a';
+import { Profiles, Attendance, Leaves, Permissions } from '../../lib/data.js?v=20260917a';
+import { el, icon, avatar, pill, ring, emptyState } from '../../lib/ui.js?v=20260917a';
+import { todayYMD, fmtTime, minToDur } from '../../lib/time.js?v=20260917a';
 // Aliased: liveRow() below has its own local `mins` (elapsed minutes), and two
 // bindings called `mins` in one module is a trap for the next reader.
-import { hm12, mins as fmtMins } from '../../lib/money.js?v=20260903a';
-import { POLL_MS } from '../../../config.js?v=20260903a';
+import { hm12, mins as fmtMins, dayFraction } from '../../lib/money.js?v=20260917a';
+import { POLL_MS } from '../../../config.js?v=20260917a';
 
 export default async function adminDashboard({ navigate, refresh }) {
   const screen = el('div.fade-up');
@@ -28,21 +28,26 @@ export default async function adminDashboard({ navigate, refresh }) {
   screen.append(permWrap);
 
   async function load() {
-    const [people, today, pending, perms] = await Promise.all([
+    const [people, today, pending, perms, lateRows] = await Promise.all([
       Profiles.all(), Attendance.range(todayYMD(), todayYMD()), Leaves.pending(),
       Permissions.approvedOn(todayYMD()).catch(() => []),   // pre-v7 database
+      // v8: every clock-in today judged against its owner's shift + the tiers.
+      Attendance.lateness(todayYMD(), todayYMD()).catch(() => []),
     ]);
+    const lateById = Object.fromEntries(lateRows.map(l => [l.attendance_id, l]));
     const employees = people.filter(p => p.role === 'employee');
     const byEmp = Object.fromEntries(today.map(r => [r.employee_id, r]));
 
     const present = today.length;
     const working = today.filter(r => r.status === 'working' && !r.clock_out).length;
     const missing = employees.filter(e => !byEmp[e.id]).length;
+    const lateToday = lateRows.filter(l => l.is_late).length;
 
     kpiGrid.replaceChildren(
       kpi('activity', 'blue', present, 'Present Today', present, employees.length),
       kpi('clock', 'teal', working, 'Currently Working'),
       kpi('alert', 'warn', missing, 'Not Clocked In'),
+      kpi('reminder', 'warn', lateToday, 'Late Today'),
       kpi('calplus', 'danger', pending.length, 'Pending Leaves'),
       kpi('inbox', 'warn', perms.length, 'On Permission Today'),
       kpi('users', 'teal', employees.length, 'Total Team'),
@@ -55,7 +60,7 @@ export default async function adminDashboard({ navigate, refresh }) {
     if (!workingRows.length) {
       liveList.append(el('div.card', emptyState('clock', 'Nobody is clocked in right now', 'Active employees will appear here in real time.')));
     } else {
-      for (const r of workingRows) liveList.append(liveRow(r));
+      for (const r of workingRows) liveList.append(liveRow(r, lateById[r.id]));
     }
 
     permList.replaceChildren();
@@ -110,15 +115,23 @@ function permissionRow(lp) {
   return row;
 }
 
-export function liveRow(r) {
+// `late` is this row's ta_attendance_lateness() entry, when the database has
+// v8: it says how late the arrival was against THIS employee's shift and what
+// tier that fell into, so the live list and payroll never disagree.
+export function liveRow(r, late) {
   const p = r.ta_profiles || {};
   const mins = r.clock_in ? Math.max(0, Math.round((Date.now() - new Date(r.clock_in)) / 60000)) : 0;
   const row = el('div.lrow');
   row.append(avatar(p, 'sm'));
-  row.append(el('div.grow', el('div.name', p.full_name || 'Employee'), el('div.meta', p.position || p.department || '—')));
+  let meta = p.position || p.department || '—';
+  if (late?.scheduled && late.late_minutes > 0) {
+    meta += ` · ${late.late_minutes} min after ${hm12(late.shift_start)}`
+      + (late.is_late ? ` → ${late.label}` + (Number(late.deduction_days) > 0 ? ` (−${dayFraction(late.deduction_days)})` : '') : ' (within grace)');
+  }
+  row.append(el('div.grow', el('div.name', p.full_name || 'Employee'), el('div.meta', meta)));
   const right = el('div', { style: { textAlign: 'right' } });
   right.append(el('div.small.b', fmtTime(r.clock_in)), el('div.tiny.muted', minToDur(mins)));
   row.append(right);
-  row.append(pill('working'));
+  row.append(late?.is_late ? el('span.pill.pill--pending', 'Late') : pill('working'));
   return row;
 }

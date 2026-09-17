@@ -9,11 +9,11 @@
 // employee's own approved rows for that month, so the counter resets on the
 // 1st with nothing to reset. Anything beyond the allowance is created as
 // Pending and waits for an admin.
-import { Permissions, PERMISSION_LABEL, PERMISSION_PILL } from '../../lib/data.js?v=20260903a';
-import { el, icon, ring, pageHead, emptyState } from '../../lib/ui.js?v=20260903a';
-import { toastOk, toastErr, confirmDialog } from '../../lib/toast.js?v=20260903a';
-import { todayYMD, fmtShortDate, MONTHS } from '../../lib/time.js?v=20260903a';
-import { hm12, mins } from '../../lib/money.js?v=20260903a';
+import { Permissions, PERMISSION_LABEL, PERMISSION_PILL } from '../../lib/data.js?v=20260917a';
+import { el, icon, ring, pageHead, emptyState } from '../../lib/ui.js?v=20260917a';
+import { toastOk, toastErr, confirmDialog } from '../../lib/toast.js?v=20260917a';
+import { todayYMD, fmtShortDate, MONTHS } from '../../lib/time.js?v=20260917a';
+import { hm12, mins } from '../../lib/money.js?v=20260917a';
 
 export default async function empPermissions({ profile, navigate, refresh }) {
   const [usage, history] = await Promise.all([

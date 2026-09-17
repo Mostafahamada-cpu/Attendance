@@ -24,6 +24,7 @@ attendance-app/
 │   ├── schema-v3.sql       # ← manager role · two-stage leave approval (run after v2)
 │   ├── schema-v4.sql       # ← admin vacation-balance management (run after v3)
 │   ├── schema-v7.sql       # ← shifts · salary rules · payroll · leave permissions
+│   ├── schema-v8.sql       # ← tiered late deductions · lateness helpers · employee board
 │   ├── provision-users-v2.sql  # ← the seven new/updated users (run after v4)
 │   ├── fix-ayman-admin.sql     # ← makes Ayman Madbouly an active admin
 │   ├── fix-admin-roles.sql     # ← EXACTLY two admins (run last, authoritative)
@@ -255,6 +256,38 @@ makes **Salary & Rules**, **Payroll** and **Leave Permissions** work:
 >
 > If a new screen reports *"Could not find the function/table"*, PostgREST hasn't picked up the
 > new schema yet. Run `notify pgrst, 'reload schema';` in the SQL editor.
+
+### b9. Run the v8 migration (REQUIRED)
+Paste and run [`db/schema-v8.sql`](db/schema-v8.sql) after v7. Additive and idempotent. It is
+what makes the **tiered late deductions**, the **Employees board** and the live **Late today**
+figures work:
+
+- **`ta_late_tiers`** — THE late-arrival rule, in one table, seeded with the company policy:
+  more than **15 min → ¼ day**, more than **30 min → ½ day**, more than **60 min → 1 full day**.
+  Editable from **Salary & Rules → Late-arrival deductions**; nobody can write it over the API.
+- **`ta_salary_rules.late_mode`** — `'tiered'` (everyone, by default) or `'per_minute'` (the
+  v7 grace + EGP/minute rule, kept per person for anyone who explicitly wants it).
+- **`ta_late_deduction()`** — the single function that turns "N minutes late" into money.
+  `ta_payroll()`, the dashboard, analytics and the employee board all go through it.
+- **`ta_daily_rate()`** — salary ÷ that employee's OWN scheduled days in the month (their
+  `ta_weekly_off_days` plus company holidays), shared by payroll and the lateness helpers.
+- **`ta_attendance_lateness(from, to)`** — every clock-in in a range judged against its
+  owner's shift start in the company timezone. Replaces the 09:15 the analytics screen used to
+  hard-code. Admins see everyone; an employee gets only their own rows.
+- **`ta_employee_board(year, month)`** — one round trip for the admin's employee cards.
+- **`ta_payroll()`** is re-created: tiered pricing, a `late_label` + `late_days` on every day
+  so screens can say *why*, and **today is `not_in` (no verdict) until the shift has ended** —
+  it only becomes an absence after the shift end has passed with no clock-in.
+- **`ta_set_salary_rules()`** gains `p_late_mode`. The v7 overload is dropped first, because
+  two overloads with overlapping named parameters make PostgREST refuse the call as ambiguous.
+
+> Verify it landed:
+> ```sql
+> select m, (public.ta_late_tier(m)).label from unnest(array[0,15,16,30,31,60,61]) m;
+> -- 0 → null · 15 → null · 16 → Quarter day · 30 → Quarter day · 31 → Half day · 60 → Half day · 61 → Full day
+> select employee_id from public.ta_salary_rules where late_mode <> 'tiered';   -- expect 0 rows
+> ```
+> If a screen says *"Could not find the function"*, run `notify pgrst, 'reload schema';`.
 
 ### c. Create users
 
@@ -633,6 +666,65 @@ carry a unique `(employee, month, lower(label))` index: re-entering the same cha
 Net salary = base salary − (late + absence + permission + other deductions)
 ```
 
+## 3f2. Tiered late deductions, off-days, editable salaries, employee board (v8)
+
+### The late rule — one table, applied everywhere
+Lateness is measured from **each employee's own shift start** (`shift_start_override`, else
+their shift's `start_time`), converted to the company timezone. There is no company-wide
+start time anywhere in the code. The deduction is then read from **`ta_late_tiers`**:
+
+```
+late minutes = clock_in (Africa/Cairo) − shift start, whole minutes, floored at 0
+      0 … 15 → on time / within grace, no deduction
+     16 … 30 → ¼ of the daily rate
+     31 … 60 → ½ of the daily rate
+     61+     → 1 full daily rate
+```
+
+**Boundaries:** a tier applies when the arrival is *strictly more* than its threshold late
+(`late_minutes > threshold_minutes`), so each boundary minute belongs to the **lower** tier:
+15 is free, 30 is a quarter, 60 is a half. This is the one comparison in `ta_late_tier()`;
+`ta_late_deduction()` is the one function that prices it, and `ta_payroll()`, the dashboard's
+*Late today*, Analytics' *Late arrivals*, the Employees board and the employee's own salary
+screen all call it — so a late arrival costs exactly the same on every screen. Every priced
+day carries `late_label` (*Quarter day*, *Half day*…) and `late_days` (0.25 / 0.5 / 1), and
+the Payroll breakdown, the employee's history and the Employees drill-down print the reason:
+*"arrived 9:35 AM · 35 min late (shift starts 9:00 AM) → Half day = ½ day × 545.45 EGP daily rate"*.
+
+Admins can change the tiers under **Salary & Rules → Late-arrival deductions** (thresholds
+must be distinct; a later arrival can never cost less than an earlier one). The legacy v7
+per-minute rule is still available **per employee** (*Edit rules → Late-arrival rule*); it is
+never the default.
+
+### Off-days are per employee
+Every employee has their own weekly rest day(s) in `ta_weekly_off_days` — Sales default to
+Friday, everyone else to Friday + Saturday, and an admin can set any combination per person
+(*Edit rules → Weekly days off*, or the Off-Days screen). Nothing assumes a shared weekend:
+`ta_daily_rate()` divides the salary by **that employee's** scheduled days in the month, a
+clock-in on their own day off is never late, and a missing clock-in on their day off is never
+an absence. The off-days are shown on every employee card, in the drill-down and on the
+employee's own *My Salary & Schedule*.
+
+### Editable salaries
+The salary figure on each employee card, in the drill-down and in the Salary & Rules table is
+a button: **Edit salary** opens a one-field dialog (0 – 100,000,000 EGP, at most two
+decimals). It calls the **same** `ta_set_salary_rules()` as the full rules dialog with only
+`p_monthly_salary` set — there is one salary column, one admin check (`ta_is_admin()`) and
+one write path; `ta_salary_rules` has no write grant for anyone. On save the board reloads
+from the database, so the new salary, daily rate and net figures are visible immediately, and
+the employee is notified ("Monthly salary updated").
+
+### Employees board
+**Admin → Employees** is a Kanban board of cards in four columns by today's status —
+**On time · Late · Not clocked in · Off today** — with an *All cards* grid view. Each card
+shows the name, role/department, **salary** (editable), **shift**, **off-days**, today's
+status with the clock-in time and the late tier, vacation and permission usage, pending leave,
+and the month so far (present / late / absent / deducted, net). Everything comes from
+`ta_employee_board()` — the same payroll calculation as the Payroll screen — in one request.
+Cards carry a subtle colour that progresses across the roster (teal → blue → violet by name)
+so people are easy to tell apart; status colours keep their meaning from the existing pill
+palette. The board scrolls sideways on a laptop and stacks into sections on a phone.
+
 ## 3g. Monthly leave permissions (v7)
 
 **A leave permission is not a vacation.** Vacation (`ta_leave_requests`) is whole days,
@@ -959,6 +1051,28 @@ add your deployed URL to the redirect allow-list.
 91. **Vacation still works end to end** — request, manager + admin approval, balance deduction,
     remaining days, weekend changes and rest days are all unchanged by this migration.
 ```
+
+**v8 checklist**
+
+92. **Salary & Rules → Late-arrival deductions** shows ≤15 free · >15 ¼ · >30 ½ · >60 full.
+    **Edit tiers** → change 60 → 45, save → the card, every rules dialog and the employee's
+    *My Salary* schedule card all show the new tier.
+93. Clock in 15 min after the shift start → Payroll breakdown: *within grace*, no deduction.
+    16 min → *Quarter day* = ¼ × daily rate. 30 → quarter. 31 → *Half day*. 60 → half.
+    61 → *Full day*. The Dashboard's live row and *Late today* KPI agree with Payroll.
+94. Give two employees different off-days (Fri vs Thu) → their *Working days* and daily rates
+    differ for the same salary; a clock-in on the off-day is never late; a missing day on the
+    off-day is never absent. Both off-days are visible on the Employees cards.
+95. **Employees → click a salary → Edit salary** → `-5` and `abc` are refused inline; `9500`
+    saves → toast, board reloads, the card, the drill-down, Payroll and the employee's own
+    screen all show 9,500 EGP and re-derived net. As an employee: `rpc/ta_set_salary_rules`
+    → *"Only admins can change salary and attendance rules."*
+96. **Employees** board: an on-time clock-in lands under *On time*, 20 min late under *Late*
+    with "→ Quarter day (−¼ day)", nobody-yet under *Not clocked in*, and a person on their
+    off-day / holiday / approved leave under *Off today*. Today is not counted as an absence
+    until the shift end has passed. Resize to phone → columns stack, nothing scrolls sideways.
+97. **Analytics → Late Arrivals** counts against each person's own shift (an 11:00 shift
+    arriving 10:50 is not late), not a fixed 09:15.
 
 **Verified already:** the app boots with zero console errors, all 38 modules load, the login
 screen renders, and live auth is wired (bad credentials return the correct "Wrong email or
